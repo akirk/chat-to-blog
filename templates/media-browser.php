@@ -92,11 +92,11 @@ $is_configured = $beeper->is_configured();
 							<label>Format</label>
 							<div class="ctb-format-options">
 								<label class="ctb-radio">
-									<input type="radio" name="ctb-format" value="gallery" checked />
+									<input type="radio" name="ctb-format" value="gallery" />
 									Gallery
 								</label>
 								<label class="ctb-radio">
-									<input type="radio" name="ctb-format" value="blocks" />
+									<input type="radio" name="ctb-format" value="blocks" checked />
 									Individual images
 								</label>
 							</div>

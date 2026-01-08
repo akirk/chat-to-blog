@@ -442,11 +442,6 @@ class Admin {
 			wp_send_json_error( $post_id->get_error_message() );
 		}
 
-		// Set first image as featured image
-		if ( ! empty( $attachment_ids[0] ) ) {
-			set_post_thumbnail( $post_id, $attachment_ids[0] );
-		}
-
 		// Attach all images to this post
 		foreach ( $attachment_ids as $attachment_id ) {
 			wp_update_post( [

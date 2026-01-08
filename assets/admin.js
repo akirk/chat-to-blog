@@ -161,7 +161,19 @@
 		if ($('#ctb-chat-list').length) {
 			loadChatList();
 			checkMediaServer();
+			restoreFormatPreference();
 		}
+	});
+
+	function restoreFormatPreference() {
+		var saved = localStorage.getItem('ctb-format');
+		if (saved) {
+			$('input[name="ctb-format"][value="' + saved + '"]').prop('checked', true);
+		}
+	}
+
+	$(document).on('change', 'input[name="ctb-format"]', function() {
+		localStorage.setItem('ctb-format', $(this).val());
 	});
 
 	function checkMediaServer() {
