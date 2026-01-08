@@ -21,6 +21,8 @@ require_once CHAT_TO_BLOG_PATH . 'includes/class-media-importer.php';
 require_once CHAT_TO_BLOG_PATH . 'includes/class-admin.php';
 
 function chat_to_blog_init() {
+	load_plugin_textdomain( 'chat-to-blog', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+
 	$admin = new ChatToBlog\Admin();
 	$admin->init();
 }

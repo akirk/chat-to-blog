@@ -28,20 +28,18 @@ class Admin {
 	}
 
 	public function register_menus() {
-		// Add "Chat to Blog" under Posts menu
 		add_submenu_page(
 			'edit.php',
-			'Chat to Blog',
-			'Chat to Blog',
+			__( 'Chat to Blog', 'chat-to-blog' ),
+			__( 'Chat to Blog', 'chat-to-blog' ),
 			'edit_posts',
 			'chat-to-blog',
 			[ $this, 'render_media_browser' ]
 		);
 
-		// Add settings under Settings menu
 		add_options_page(
-			'Chat to Blog',
-			'Chat to Blog',
+			__( 'Chat to Blog', 'chat-to-blog' ),
+			__( 'Chat to Blog', 'chat-to-blog' ),
 			'manage_options',
 			'chat-to-blog-settings',
 			[ $this, 'render_settings' ]
@@ -79,7 +77,7 @@ class Admin {
 		wp_enqueue_script(
 			'chat-to-blog-admin',
 			CHAT_TO_BLOG_URL . 'assets/admin.js',
-			[ 'jquery', 'sortablejs', 'chat-to-blog-beeper-client' ],
+			[ 'jquery', 'sortablejs', 'chat-to-blog-beeper-client', 'wp-i18n' ],
 			CHAT_TO_BLOG_VERSION,
 			true
 		);
@@ -91,6 +89,8 @@ class Admin {
 			'mediaServerUrl'  => get_option( 'chat_to_blog_local_server', 'http://localhost:8787' ),
 			'importedUrls'    => array_keys( $this->importer->get_all_imported_urls() ),
 		] );
+
+		wp_set_script_translations( 'chat-to-blog-admin', 'chat-to-blog', CHAT_TO_BLOG_PATH . 'languages' );
 	}
 
 	public function render_settings() {
@@ -105,7 +105,7 @@ class Admin {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( 'Permission denied' );
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
 		}
 
 		$result = $this->beeper->test_connection();
@@ -121,7 +121,7 @@ class Admin {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( 'Permission denied' );
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
 		}
 
 		$token = sanitize_text_field( $_POST['token'] ?? '' );
@@ -130,7 +130,8 @@ class Admin {
 		if ( ! empty( $token ) ) {
 			$test = $this->beeper->test_connection();
 			if ( is_wp_error( $test ) ) {
-				wp_send_json_error( 'Token saved but connection failed: ' . $test->get_error_message() );
+				/* translators: %s: error message */
+				wp_send_json_error( sprintf( __( 'Token saved but connection failed: %s', 'chat-to-blog' ), $test->get_error_message() ) );
 			}
 			wp_send_json_success( [ 'connected' => true, 'accounts' => $test['accounts'] ] );
 		}
@@ -142,7 +143,7 @@ class Admin {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( 'Permission denied' );
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
 		}
 
 		$local_server_url = esc_url_raw( $_POST['local_server_url'] ?? 'http://localhost:8787' );
@@ -189,7 +190,7 @@ class Admin {
 		$limit = intval( $_POST['limit'] ?? 50 );
 
 		if ( empty( $chat_id ) ) {
-			wp_send_json_error( 'Chat ID required' );
+			wp_send_json_error( __( 'Chat ID required', 'chat-to-blog' ) );
 		}
 
 		$result = $this->beeper->get_media_messages( $chat_id, $limit, $cursor ?: null );
@@ -210,11 +211,17 @@ class Admin {
 				continue;
 			}
 
+			$filename = $item['fileName'];
+			if ( empty( $filename ) ) {
+				$ext = $this->get_extension_from_mime( $item['mimeType'] ) ?: 'jpg';
+				$filename = 'media.' . $ext;
+			}
+
 			$media[] = [
 				'id'           => $beeper_id,
 				'url'          => $url,
 				'thumbnailUrl' => $thumbnail_url,
-				'fileName'     => $item['fileName'] ?: 'image.jpg',
+				'fileName'     => $filename,
 				'mimeType'     => $item['mimeType'],
 				'fileSize'     => $item['fileSize'],
 				'type'         => $item['type'],
@@ -241,16 +248,15 @@ class Admin {
 		$id = isset( $_GET['id'] ) ? urldecode( $_GET['id'] ) : '';
 
 		if ( empty( $id ) ) {
-			wp_die( 'No id specified', 400 );
+			wp_die( esc_html__( 'No id specified', 'chat-to-blog' ), 400 );
 		}
 
-		// Handle localmxc:// and mxc:// URLs via Beeper API
 		if ( strpos( $id, 'localmxc://' ) === 0 || strpos( $id, 'mxc://' ) === 0 ) {
 			$this->serve_mxc_media( $id );
 			return;
 		}
 
-		wp_die( 'Invalid media id', 400 );
+		wp_die( esc_html__( 'Invalid media id', 'chat-to-blog' ), 400 );
 	}
 
 	private function serve_mxc_media( $mxc_url ) {
@@ -264,18 +270,19 @@ class Admin {
 		] );
 
 		if ( is_wp_error( $response ) ) {
-			wp_die( 'Failed to download: ' . $response->get_error_message(), 500 );
+			/* translators: %s: error message */
+			wp_die( esc_html( sprintf( __( 'Failed to download: %s', 'chat-to-blog' ), $response->get_error_message() ) ), 500 );
 		}
 
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( $code !== 200 ) {
-			wp_die( 'Beeper API error: ' . $code, $code );
+			/* translators: %d: HTTP error code */
+			wp_die( esc_html( sprintf( __( 'Beeper API error: %d', 'chat-to-blog' ), $code ) ), $code );
 		}
 
 		$body = wp_remote_retrieve_body( $response );
 		$content_type = wp_remote_retrieve_header( $response, 'content-type' );
 
-		// If Beeper returns JSON with a local file path
 		if ( strpos( $content_type, 'application/json' ) !== false ) {
 			$data = json_decode( $body, true );
 			if ( ! empty( $data['srcURL'] ) ) {
@@ -287,7 +294,7 @@ class Admin {
 				}
 				return;
 			}
-			wp_die( 'Could not resolve media', 404 );
+			wp_die( esc_html__( 'Could not resolve media', 'chat-to-blog' ), 404 );
 		}
 
 		header( 'Content-Type: ' . ( $content_type ?: 'image/jpeg' ) );
@@ -306,7 +313,8 @@ class Admin {
 		$file_path = urldecode( $file_path );
 
 		if ( ! file_exists( $file_path ) ) {
-			wp_die( 'File not found: ' . $file_path, 404 );
+			/* translators: %s: file path */
+			wp_die( esc_html( sprintf( __( 'File not found: %s', 'chat-to-blog' ), $file_path ) ), 404 );
 		}
 
 		$mime_type = mime_content_type( $file_path );
@@ -324,13 +332,15 @@ class Admin {
 		$response = wp_remote_get( $proxy_url, [ 'timeout' => 30 ] );
 
 		if ( is_wp_error( $response ) ) {
-			wp_die( 'Local media server error: ' . $response->get_error_message() . '. Is local-media-server.php running?', 500 );
+			/* translators: %s: error message */
+			wp_die( esc_html( sprintf( __( 'Local media server error: %s. Is local-media-server.php running?', 'chat-to-blog' ), $response->get_error_message() ) ), 500 );
 		}
 
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( $code !== 200 ) {
 			$body = wp_remote_retrieve_body( $response );
-			wp_die( 'Local media server returned ' . $code . ': ' . $body, $code );
+			/* translators: 1: HTTP status code, 2: error message */
+			wp_die( esc_html( sprintf( __( 'Local media server returned %1$d: %2$s', 'chat-to-blog' ), $code, $body ) ), $code );
 		}
 
 		$body = wp_remote_retrieve_body( $response );
@@ -348,7 +358,7 @@ class Admin {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
 		if ( ! current_user_can( 'edit_posts' ) || ! current_user_can( 'upload_files' ) ) {
-			wp_send_json_error( 'Permission denied' );
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
 		}
 
 		$post_id = intval( $_POST['post_id'] ?? 0 );
@@ -362,18 +372,18 @@ class Admin {
 		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
 
 		if ( empty( $title ) ) {
-			wp_send_json_error( 'Title is required' );
+			wp_send_json_error( __( 'Title is required', 'chat-to-blog' ) );
 		}
 
 		if ( empty( $images ) && ! $post_id ) {
-			wp_send_json_error( 'No images selected' );
+			wp_send_json_error( __( 'No media selected', 'chat-to-blog' ) );
 		}
 
 		// If updating existing post (without new images)
 		if ( $post_id && empty( $images ) ) {
 			$post = get_post( $post_id );
 			if ( ! $post || ! current_user_can( 'edit_post', $post_id ) ) {
-				wp_send_json_error( 'Cannot edit this post' );
+				wp_send_json_error( __( 'Cannot edit this post', 'chat-to-blog' ) );
 			}
 
 			$post_args = [
@@ -404,7 +414,7 @@ class Admin {
 		if ( $post_id ) {
 			$post = get_post( $post_id );
 			if ( ! $post || ! current_user_can( 'edit_post', $post_id ) ) {
-				wp_send_json_error( 'Cannot edit this post' );
+				wp_send_json_error( __( 'Cannot edit this post', 'chat-to-blog' ) );
 			}
 		}
 
@@ -430,9 +440,8 @@ class Admin {
 				continue;
 			}
 
-			// Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
 			if ( ! preg_match( '/^data:([^;]+);base64,(.+)$/', $data_url, $matches ) ) {
-				$import_errors[] = 'Invalid data URL format';
+				$import_errors[] = __( 'Invalid data URL format', 'chat-to-blog' );
 				continue;
 			}
 
@@ -441,7 +450,7 @@ class Admin {
 			$binary_data = base64_decode( $base64_data );
 
 			if ( $binary_data === false ) {
-				$import_errors[] = 'Failed to decode base64 data';
+				$import_errors[] = __( 'Failed to decode base64 data', 'chat-to-blog' );
 				continue;
 			}
 
@@ -467,7 +476,8 @@ class Admin {
 		$attachment_ids = array_column( $imported_images, 'attachmentId' );
 
 		if ( empty( $attachment_ids ) ) {
-			wp_send_json_error( 'Failed to import images: ' . implode( ', ', $import_errors ) );
+			/* translators: %s: comma-separated list of error messages */
+			wp_send_json_error( sprintf( __( 'Failed to import media: %s', 'chat-to-blog' ), implode( ', ', $import_errors ) ) );
 		}
 
 		// Build image blocks for new images
@@ -546,13 +556,22 @@ class Admin {
 
 	private function get_extension_from_mime( $mime_type ) {
 		$map = [
-			'image/jpeg' => 'jpg',
-			'image/png'  => 'png',
-			'image/gif'  => 'gif',
-			'image/webp' => 'webp',
-			'image/heic' => 'heic',
-			'video/mp4'  => 'mp4',
-			'video/quicktime' => 'mov',
+			'image/jpeg'       => 'jpg',
+			'image/png'        => 'png',
+			'image/gif'        => 'gif',
+			'image/webp'       => 'webp',
+			'image/heic'       => 'heic',
+			'image/heif'       => 'heif',
+			'image/avif'       => 'avif',
+			'image/svg+xml'    => 'svg',
+			'image/bmp'        => 'bmp',
+			'image/tiff'       => 'tiff',
+			'video/mp4'        => 'mp4',
+			'video/quicktime'  => 'mov',
+			'video/webm'       => 'webm',
+			'video/x-msvideo'  => 'avi',
+			'video/x-matroska' => 'mkv',
+			'video/3gpp'       => '3gp',
 		];
 		return $map[ $mime_type ] ?? null;
 	}

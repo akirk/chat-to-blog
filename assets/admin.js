@@ -5,14 +5,15 @@
 (function($) {
 	'use strict';
 
+	var { __, _n, sprintf } = wp.i18n;
 	var config = window.ctbConfig || {};
 	var beeper = new BeeperClient(config.beeperToken);
 	var selectedMedia = [];
-	var postImages = []; // Images already in the current post: [{mxcUrl, attachmentId}]
+	var postImages = [];
 	var currentChatId = null;
 	var currentCursor = null;
 	var currentPostId = null;
-	var imageCache = {}; // Cache for loaded data URLs
+	var imageCache = {};
 	var importedUrls = new Set(config.importedUrls || []);
 
 	// WordPress AJAX helper
@@ -85,17 +86,21 @@
 			.done(function(response) {
 				if (response.success) {
 					if (response.data.connected) {
-						showStatus('#ctb-token-status', 'Connected! Found ' + response.data.accounts + ' account(s).', false);
+						showStatus('#ctb-token-status', sprintf(
+							/* translators: %d: number of accounts */
+							__('Connected! Found %d account(s).', 'chat-to-blog'),
+							response.data.accounts
+						), false);
 						config.beeperToken = token;
 					} else {
-						showStatus('#ctb-token-status', 'Token cleared.', false);
+						showStatus('#ctb-token-status', __('Token cleared.', 'chat-to-blog'), false);
 					}
 				} else {
-					showStatus('#ctb-token-status', response.data || 'Error saving token', true);
+					showStatus('#ctb-token-status', response.data || __('Error saving token', 'chat-to-blog'), true);
 				}
 			})
 			.fail(function() {
-				showStatus('#ctb-token-status', 'Request failed', true);
+				showStatus('#ctb-token-status', __('Request failed', 'chat-to-blog'), true);
 			});
 	});
 
@@ -103,13 +108,22 @@
 		wpAjax('ctb_test_connection', {})
 			.done(function(response) {
 				if (response.success) {
-					showStatus('#ctb-token-status', 'Connected! Found ' + response.data.accounts + ' account(s) (' + response.data.networks.join(', ') + ')', false);
+					showStatus('#ctb-token-status', sprintf(
+						/* translators: 1: number of accounts, 2: network names */
+						__('Connected! Found %1$d account(s) (%2$s)', 'chat-to-blog'),
+						response.data.accounts,
+						response.data.networks.join(', ')
+					), false);
 				} else {
-					showStatus('#ctb-token-status', 'Connection failed: ' + response.data, true);
+					showStatus('#ctb-token-status', sprintf(
+						/* translators: %s: error message */
+						__('Connection failed: %s', 'chat-to-blog'),
+						response.data
+					), true);
 				}
 			})
 			.fail(function() {
-				showStatus('#ctb-token-status', 'Request failed', true);
+				showStatus('#ctb-token-status', __('Request failed', 'chat-to-blog'), true);
 			});
 	});
 
@@ -126,13 +140,13 @@
 
 	$('#ctb-test-local-server').on('click', function() {
 		var serverUrl = $('#ctb-local-server-url').val() || 'http://localhost:8787';
-		showStatus('#ctb-server-status', 'Testing connection...', false);
+		showStatus('#ctb-server-status', __('Testing connection...', 'chat-to-blog'), false);
 
 		testLocalServer(serverUrl).then(function(ok) {
 			if (ok) {
-				showStatus('#ctb-server-status', 'Local server is reachable!', false);
+				showStatus('#ctb-server-status', __('Local server is reachable!', 'chat-to-blog'), false);
 			} else {
-				showStatus('#ctb-server-status', 'Cannot reach local server. Is it running?', true);
+				showStatus('#ctb-server-status', __('Cannot reach local server. Is it running?', 'chat-to-blog'), true);
 			}
 		});
 	});
@@ -147,13 +161,13 @@
 			.done(function(response) {
 				if (response.success) {
 					config.mediaServerUrl = localServerUrl;
-					showStatus('#ctb-server-status', 'Settings saved.', false);
+					showStatus('#ctb-server-status', __('Settings saved.', 'chat-to-blog'), false);
 				} else {
-					showStatus('#ctb-server-status', response.data || 'Error saving settings', true);
+					showStatus('#ctb-server-status', response.data || __('Error saving settings', 'chat-to-blog'), true);
 				}
 			})
 			.fail(function() {
-				showStatus('#ctb-server-status', 'Request failed', true);
+				showStatus('#ctb-server-status', __('Request failed', 'chat-to-blog'), true);
 			});
 	});
 
@@ -186,7 +200,7 @@
 					.removeClass('ctb-status-checking')
 					.addClass(ok ? 'ctb-status-ok' : 'ctb-status-error');
 				$serverStatus.find('.ctb-server-status-text').text(
-					ok ? 'Local server connected' : 'Local server offline'
+					ok ? __('Local server connected', 'chat-to-blog') : __('Local server offline', 'chat-to-blog')
 				);
 				if (!ok) {
 					$serverStatus.attr('title', 'Start with: php -S localhost:8787 local-media-server.php');
@@ -201,7 +215,11 @@
 				if (result.success) {
 					renderChatList(result.data.items || []);
 				} else {
-					$('#ctb-chat-list').html('<span class="ctb-error">Failed to load chats: ' + result.error + '</span>');
+					$('#ctb-chat-list').html('<span class="ctb-error">' + sprintf(
+						/* translators: %s: error message */
+						__('Failed to load chats: %s', 'chat-to-blog'),
+						result.error
+					) + '</span>');
 				}
 			});
 	}
@@ -211,7 +229,7 @@
 		$list.empty();
 
 		if (chats.length === 0) {
-			$list.html('<span class="ctb-empty">No chats found</span>');
+			$list.html('<span class="ctb-empty">' + __('No chats found', 'chat-to-blog') + '</span>');
 			return;
 		}
 
@@ -219,9 +237,8 @@
 			var $item = $('<button type="button" class="ctb-chat-pill">')
 				.data('chat', chat);
 
-			// Skip avatar for now - would need async loading
 			$item.addClass('no-avatar');
-			$item.append($('<span class="ctb-chat-title">').text(chat.title || chat.name || 'Unknown'));
+			$item.append($('<span class="ctb-chat-title">').text(chat.title || chat.name || __('Unknown', 'chat-to-blog')));
 			$list.append($item);
 		});
 	}
@@ -250,7 +267,7 @@
 		var $spinner = $loadMore.find('.spinner');
 
 		if (!append) {
-			$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> Loading media...</div>');
+			$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Loading media...', 'chat-to-blog') + '</div>');
 		}
 		$spinner.addClass('is-active');
 
@@ -258,7 +275,11 @@
 			.then(function(result) {
 				if (!result.success) {
 					if (!append) {
-						$grid.html('<p class="ctb-empty">Error loading media: ' + result.error + '</p>');
+						$grid.html('<p class="ctb-empty">' + sprintf(
+							/* translators: %s: error message */
+							__('Error loading media: %s', 'chat-to-blog'),
+							result.error
+						) + '</p>');
 					}
 					return;
 				}
@@ -278,7 +299,7 @@
 
 	function renderMedia(items, $container) {
 		if (items.length === 0 && $container.children().length === 0) {
-			$container.html('<p class="ctb-empty">No media found in this chat</p>');
+			$container.html('<p class="ctb-empty">' + __('No media found in this chat', 'chat-to-blog') + '</p>');
 			return;
 		}
 
@@ -377,7 +398,7 @@
 		$container.empty();
 
 		if (selectedMedia.length === 0) {
-			$container.html('<p class="ctb-hint">Select images from the left to add them here</p>');
+			$container.html('<p class="ctb-hint">' + __('Select images from the left to add them here', 'chat-to-blog') + '</p>');
 			$('#ctb-save-draft, #ctb-publish').prop('disabled', true);
 			$('#ctb-post-date').val('');
 			return;
@@ -487,13 +508,13 @@
 		currentPostId = null;
 		selectedMedia = [];
 		postImages = [];
-		$('#ctb-panel-title').text('New Post');
+		$('#ctb-panel-title').text(__('New Post', 'chat-to-blog'));
 		$('#ctb-post-title').val('').prop('disabled', false);
 		$('#ctb-post-content').val('').prop('disabled', false);
 		$('#ctb-post-date').val('').prop('disabled', false);
 		$('#ctb-post-status').empty();
-		$('#ctb-save-draft').text('Save Draft').prop('disabled', true);
-		$('#ctb-publish').text('Publish').prop('disabled', true);
+		$('#ctb-save-draft').text(__('Save Draft', 'chat-to-blog')).prop('disabled', true);
+		$('#ctb-publish').text(__('Publish', 'chat-to-blog')).prop('disabled', true);
 		$('input[name="ctb-format"]').prop('disabled', false);
 		updateSelectedPanel();
 		$('.ctb-media-item').removeClass('selected');
@@ -522,8 +543,8 @@
 				'<div class="ctb-panel-header">' +
 				'<h3>' + $('<div>').text(panel.title).html() + '</h3>' +
 				'<span class="ctb-collapsed-links">' +
-				'<a href="' + panel.editUrl + '" target="_blank">Edit</a> · ' +
-				'<a href="' + panel.viewUrl + '" target="_blank">View</a>' +
+				'<a href="' + panel.editUrl + '" target="_blank">' + __('Edit', 'chat-to-blog') + '</a> · ' +
+				'<a href="' + panel.viewUrl + '" target="_blank">' + __('View', 'chat-to-blog') + '</a>' +
 				'</span>' +
 				'</div></div>');
 			$('.ctb-column-right').append($el);
@@ -542,7 +563,7 @@
 		$('#ctb-save-draft, #ctb-publish').prop('disabled', true);
 
 		var doSubmit = function(images) {
-			$('#ctb-post-status').html('<div class="ctb-importing">' + (isUpdate ? 'Updating' : 'Creating') + ' post...</div>');
+			$('#ctb-post-status').html('<div class="ctb-importing">' + (isUpdate ? __('Updating post...', 'chat-to-blog') : __('Creating post...', 'chat-to-blog')) + '</div>');
 
 			return wpAjax('ctb_create_post', {
 				post_id: currentPostId || '',
@@ -556,7 +577,6 @@
 			});
 		};
 
-		// Filter to only new images (not already in postImages)
 		var postImageUrls = postImages.map(function(img) { return img.mxcUrl; });
 		var newMedia = selectedMedia.filter(function(item) {
 			return postImageUrls.indexOf(item.mxcUrl) === -1;
@@ -564,7 +584,7 @@
 
 		var submitPromise;
 		if (newMedia.length > 0) {
-			$('#ctb-post-status').html('<div class="ctb-importing">Fetching images...</div>');
+			$('#ctb-post-status').html('<div class="ctb-importing">' + __('Fetching media...', 'chat-to-blog') + '</div>');
 			var imagePromises = newMedia.map(function(item) {
 				if (imageCache[item.mxcUrl]) {
 					return Promise.resolve({
@@ -588,23 +608,20 @@
 					currentPostId = response.data.post_id;
 
 					var postTitle = $('#ctb-post-title').val().trim();
-					$('#ctb-panel-title').text(postTitle || 'Edit Post');
-					$('#ctb-save-draft').text('Convert to Draft');
-					$('#ctb-publish').text('Update');
+					$('#ctb-panel-title').text(postTitle || __('Edit Post', 'chat-to-blog'));
+					$('#ctb-save-draft').text(__('Convert to Draft', 'chat-to-blog'));
+					$('#ctb-publish').text(__('Update', 'chat-to-blog'));
 					$('input[name="ctb-format"]').prop('disabled', true);
 
-					// Add collapsed "New Post" panel above if not already present
 					if (!$('.ctb-new-post-collapsed').length) {
 						var $collapsed = $('<div class="ctb-panel ctb-new-post-collapsed">' +
 							'<div class="ctb-panel-header ctb-panel-header-clickable">' +
-							'<h3>+ New Post</h3>' +
+							'<h3>+ ' + __('New Post', 'chat-to-blog') + '</h3>' +
 							'</div></div>');
 						$('.ctb-post-panel').before($collapsed);
 					}
 
-					// Store this panel's info for later if user starts a new post
 					var editPanels = $('.ctb-column-right').data('editPanels') || [];
-					// Remove if already exists (updating same post)
 					editPanels = editPanels.filter(function(p) { return p.postId !== currentPostId; });
 					editPanels.unshift({
 						postId: currentPostId,
@@ -617,14 +634,22 @@
 					var statusText;
 					var newImageCount = newMedia.length;
 					if (wasNew) {
-						statusText = status === 'publish' ? 'Published' : 'Saved as draft';
+						statusText = status === 'publish' ? __('Published', 'chat-to-blog') : __('Saved as draft', 'chat-to-blog');
 						if (newImageCount > 0) {
-							statusText += ' with ' + newImageCount + ' image(s).';
+							statusText += ' ' + sprintf(
+								/* translators: %d: number of images */
+								_n('with %d image.', 'with %d images.', newImageCount, 'chat-to-blog'),
+								newImageCount
+							);
 						}
 					} else {
-						statusText = status === 'publish' ? 'Updated' : 'Converted to draft';
+						statusText = status === 'publish' ? __('Updated', 'chat-to-blog') : __('Converted to draft', 'chat-to-blog');
 						if (newImageCount > 0) {
-							statusText += ', added ' + newImageCount + ' image(s).';
+							statusText += ', ' + sprintf(
+								/* translators: %d: number of images */
+								_n('added %d image.', 'added %d images.', newImageCount, 'chat-to-blog'),
+								newImageCount
+							);
 						} else {
 							statusText += '.';
 						}
@@ -633,12 +658,11 @@
 					$('#ctb-post-status').html(
 						'<div class="ctb-status ctb-status-success">' +
 						statusText + ' ' +
-						'<a href="' + response.data.edit_url + '" target="_blank">Edit</a> · ' +
-						'<a href="' + response.data.view_url + '" target="_blank">View</a>' +
+						'<a href="' + response.data.edit_url + '" target="_blank">' + __('Edit', 'chat-to-blog') + '</a> · ' +
+						'<a href="' + response.data.view_url + '" target="_blank">' + __('View', 'chat-to-blog') + '</a>' +
 						'</div>'
 					);
 
-					// Update postImages with returned images
 					if (response.data.images) {
 						response.data.images.forEach(function(img) {
 							var exists = postImages.some(function(p) { return p.mxcUrl === img.mxcUrl; });
@@ -660,7 +684,11 @@
 				}
 			})
 			.catch(function(err) {
-				$('#ctb-post-status').html('<div class="ctb-status ctb-status-error">Error: ' + err.message + '</div>');
+				$('#ctb-post-status').html('<div class="ctb-status ctb-status-error">' + sprintf(
+					/* translators: %s: error message */
+					__('Error: %s', 'chat-to-blog'),
+					err.message
+				) + '</div>');
 				updateButtonState();
 			});
 	}

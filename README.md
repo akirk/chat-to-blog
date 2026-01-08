@@ -10,6 +10,8 @@ Chat to Blog connects to the Beeper Desktop local API to browse images and video
 
 - Browse all your Beeper chats and group conversations
 - View and select images and videos from chat messages
+- Support for multiple image formats: JPEG, PNG, GIF, WebP, HEIC/HEIF, AVIF, BMP, TIFF, SVG
+- Support for multiple video formats: MP4, MOV, WebM, AVI, MKV, 3GP
 - Videos display with play icon overlay and VIDEO badge for easy identification
 - Drag and drop to reorder selected media
 - Create posts as galleries or individual image/video blocks
@@ -82,6 +84,20 @@ Keep this terminal open while using Chat to Blog. The default URL is `http://loc
 4. The plugin imports media to the WordPress Media Library
 5. Posts are created with Gutenberg image/gallery blocks
 
+## Translations
+
+The plugin is fully translatable. To create translations:
+
+1. Use a tool like [Poedit](https://poedit.net/) or WP-CLI to generate a `.pot` file
+2. Create translations in the `languages/` directory
+3. Name files as `chat-to-blog-{locale}.po` and `chat-to-blog-{locale}.mo`
+
+For JavaScript translations, the plugin uses `wp_set_script_translations()`. Generate a JSON file with:
+
+```bash
+wp i18n make-json languages/chat-to-blog-{locale}.po --no-purge
+```
+
 ## File Structure
 
 ```
@@ -95,11 +111,12 @@ chat-to-blog/
 ├── templates/
 │   ├── settings.php          # Settings page template
 │   └── media-browser.php     # Media browser page template
-└── assets/
-    ├── admin.js              # Main admin JavaScript
-    ├── admin.css             # Admin styles
-    ├── beeper-client.js      # Browser-side Beeper API client
-    └── sortable.min.js       # SortableJS for drag-and-drop
+├── assets/
+│   ├── admin.js              # Main admin JavaScript
+│   ├── admin.css             # Admin styles
+│   ├── beeper-client.js      # Browser-side Beeper API client
+│   └── sortable.min.js       # SortableJS for drag-and-drop
+└── languages/                # Translation files (.po, .mo, .json)
 ```
 
 ## License

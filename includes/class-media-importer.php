@@ -57,7 +57,8 @@ class MediaImporter {
 		$upload = wp_upload_bits( $filename, null, $download['body'] );
 
 		if ( ! empty( $upload['error'] ) ) {
-			return new \WP_Error( 'upload_failed', $upload['error'] );
+			/* translators: %s: upload error message */
+			return new \WP_Error( 'upload_failed', sprintf( __( 'Upload failed: %s', 'chat-to-blog' ), $upload['error'] ) );
 		}
 
 		$file_type = wp_check_filetype( $upload['file'] );
@@ -111,8 +112,14 @@ class MediaImporter {
 
 		foreach ( $media_items as $item ) {
 			$media_url = $item['url'] ?? '';
-			$filename = $item['fileName'] ?? $item['filename'] ?? 'image.jpg';
+			$filename = $item['fileName'] ?? $item['filename'] ?? '';
 			$beeper_id = $item['id'] ?? $item['mediaId'] ?? null;
+
+			if ( empty( $filename ) ) {
+				$mime_type = $item['mimeType'] ?? '';
+				$ext = $this->get_extension_from_mime( $mime_type ) ?: 'jpg';
+				$filename = 'media.' . $ext;
+			}
 
 			$metadata = [
 				'timestamp' => $item['timestamp'] ?? '',
@@ -131,5 +138,27 @@ class MediaImporter {
 		}
 
 		return $results;
+	}
+
+	private function get_extension_from_mime( $mime_type ) {
+		$map = [
+			'image/jpeg'       => 'jpg',
+			'image/png'        => 'png',
+			'image/gif'        => 'gif',
+			'image/webp'       => 'webp',
+			'image/heic'       => 'heic',
+			'image/heif'       => 'heif',
+			'image/avif'       => 'avif',
+			'image/svg+xml'    => 'svg',
+			'image/bmp'        => 'bmp',
+			'image/tiff'       => 'tiff',
+			'video/mp4'        => 'mp4',
+			'video/quicktime'  => 'mov',
+			'video/webm'       => 'webm',
+			'video/x-msvideo'  => 'avi',
+			'video/x-matroska' => 'mkv',
+			'video/3gpp'       => '3gp',
+		];
+		return $map[ $mime_type ] ?? null;
 	}
 }

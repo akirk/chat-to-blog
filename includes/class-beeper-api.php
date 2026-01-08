@@ -41,7 +41,7 @@ class BeeperAPI {
 
 	private function request( $endpoint, $params = [] ) {
 		if ( ! $this->is_configured() ) {
-			return new \WP_Error( 'no_token', 'Beeper API token not configured' );
+			return new \WP_Error( 'no_token', __( 'Beeper API token not configured', 'chat-to-blog' ) );
 		}
 
 		$url = $this->api_base . $endpoint;
@@ -69,7 +69,7 @@ class BeeperAPI {
 		if ( $code >= 400 ) {
 			return new \WP_Error(
 				'beeper_api_error',
-				$data['message'] ?? 'Beeper API error',
+				$data['message'] ?? __( 'Beeper API error', 'chat-to-blog' ),
 				[ 'status' => $code, 'response' => $data ]
 			);
 		}
@@ -206,11 +206,11 @@ class BeeperAPI {
 	 */
 	public function download_media( $media_url ) {
 		if ( ! $this->is_configured() ) {
-			return new \WP_Error( 'no_token', 'Beeper API token not configured' );
+			return new \WP_Error( 'no_token', __( 'Beeper API token not configured', 'chat-to-blog' ) );
 		}
 
 		if ( empty( $media_url ) ) {
-			return new \WP_Error( 'no_url', 'No media URL provided' );
+			return new \WP_Error( 'no_url', __( 'No media URL provided', 'chat-to-blog' ) );
 		}
 
 		// Handle mxc:// URLs via the assets/download endpoint
@@ -248,7 +248,7 @@ class BeeperAPI {
 
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( $code >= 400 ) {
-			return new \WP_Error( 'download_failed', 'Failed to download media', [ 'status' => $code ] );
+			return new \WP_Error( 'download_failed', __( 'Failed to download media', 'chat-to-blog' ), [ 'status' => $code ] );
 		}
 
 		return [
@@ -280,7 +280,7 @@ class BeeperAPI {
 		if ( $code >= 400 ) {
 			return new \WP_Error(
 				'asset_download_failed',
-				'Failed to download asset',
+				__( 'Failed to download asset', 'chat-to-blog' ),
 				[ 'status' => $code ]
 			);
 		}
@@ -320,12 +320,13 @@ class BeeperAPI {
 		$path = urldecode( $path );
 
 		if ( ! file_exists( $path ) ) {
-			return new \WP_Error( 'file_not_found', 'Local file not found: ' . $path );
+			/* translators: %s: file path */
+			return new \WP_Error( 'file_not_found', sprintf( __( 'Local file not found: %s', 'chat-to-blog' ), $path ) );
 		}
 
 		$content = file_get_contents( $path );
 		if ( $content === false ) {
-			return new \WP_Error( 'read_failed', 'Failed to read local file' );
+			return new \WP_Error( 'read_failed', __( 'Failed to read local file', 'chat-to-blog' ) );
 		}
 
 		$finfo = finfo_open( FILEINFO_MIME_TYPE );
@@ -353,7 +354,8 @@ class BeeperAPI {
 
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( $code >= 400 ) {
-			return new \WP_Error( 'local_server_error', 'Local server returned ' . $code );
+			/* translators: %d: HTTP status code */
+			return new \WP_Error( 'local_server_error', sprintf( __( 'Local server returned %d', 'chat-to-blog' ), $code ) );
 		}
 
 		return [
