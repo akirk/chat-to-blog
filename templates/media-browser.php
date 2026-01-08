@@ -12,21 +12,16 @@ $beeper = new \ChatToBlog\BeeperAPI( $user_id );
 $is_configured = $beeper->is_configured();
 ?>
 
-<?php
-$use_local_server = get_option( 'chat_to_blog_use_local_server', false );
-?>
 <div class="wrap ctb-media-browser">
 	<div class="ctb-page-header">
 		<h1>
 			Chat to Blog
 			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="page-title-action">Settings</a>
 		</h1>
-		<?php if ( $use_local_server ) : ?>
 		<div id="ctb-local-server-status" class="ctb-server-status-badge ctb-status-checking">
 			<span class="ctb-server-status-icon"></span>
 			<span class="ctb-server-status-text">Checking...</span>
 		</div>
-		<?php endif; ?>
 	</div>
 
 	<?php if ( ! $is_configured ) : ?>

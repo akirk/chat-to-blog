@@ -6,20 +6,62 @@
 	'use strict';
 
 	var config = window.ctbConfig || {};
+	var beeper = new BeeperClient(config.beeperToken);
 	var selectedMedia = [];
-	var currentCursor = null;
 	var currentChatId = null;
-	var currentPostId = null; // Track if we have a post already
+	var currentCursor = null;
+	var currentPostId = null;
+	var imageCache = {}; // Cache for loaded data URLs
 
-	function ajax(action, data) {
+	// WordPress AJAX helper
+	function wpAjax(action, data) {
 		return $.ajax({
 			url: config.ajaxUrl,
 			type: 'POST',
-			data: Object.assign({
-				action: action,
-				nonce: config.nonce
-			}, data)
+			data: Object.assign({ action: action, nonce: config.nonce }, data)
 		});
+	}
+
+	// Fetch image bytes from local media server and return as data URL
+	function fetchImageAsDataUrl(mxcUrl) {
+		if (imageCache[mxcUrl]) {
+			return Promise.resolve(imageCache[mxcUrl]);
+		}
+
+		var url = config.mediaServerUrl + '?id=' + encodeURIComponent(mxcUrl) + '&token=' + encodeURIComponent(config.beeperToken);
+
+		return fetch(url)
+			.then(function(response) {
+				if (!response.ok) throw new Error('Media server error: ' + response.status);
+				return response.blob();
+			})
+			.then(function(blob) {
+				return new Promise(function(resolve) {
+					var reader = new FileReader();
+					reader.onloadend = function() {
+						imageCache[mxcUrl] = reader.result;
+						resolve(reader.result);
+					};
+					reader.readAsDataURL(blob);
+				});
+			});
+	}
+
+	// Load image into an img element
+	function loadImage($img, mxcUrl) {
+		$img.attr('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'); // 1px placeholder
+		$img.addClass('ctb-loading');
+
+		fetchImageAsDataUrl(mxcUrl)
+			.then(function(dataUrl) {
+				$img.attr('src', dataUrl);
+				$img.removeClass('ctb-loading');
+			})
+			.catch(function(err) {
+				console.error('Failed to load image:', err);
+				$img.addClass('ctb-error');
+				$img.removeClass('ctb-loading');
+			});
 	}
 
 	function showStatus(container, message, isError) {
@@ -28,9 +70,7 @@
 		$(container).html($status);
 
 		if (!isError) {
-			setTimeout(function() {
-				$status.fadeOut();
-			}, 3000);
+			setTimeout(function() { $status.fadeOut(); }, 3000);
 		}
 	}
 
@@ -39,15 +79,14 @@
 		e.preventDefault();
 		var token = $('#ctb-token').val();
 
-		ajax('ctb_save_token', { token: token })
+		wpAjax('ctb_save_token', { token: token })
 			.done(function(response) {
 				if (response.success) {
 					if (response.data.connected) {
 						showStatus('#ctb-token-status', 'Connected! Found ' + response.data.accounts + ' account(s).', false);
-						$('#ctb-chats-section').show();
+						config.beeperToken = token;
 					} else {
 						showStatus('#ctb-token-status', 'Token cleared.', false);
-						$('#ctb-chats-section').hide();
 					}
 				} else {
 					showStatus('#ctb-token-status', response.data || 'Error saving token', true);
@@ -59,7 +98,7 @@
 	});
 
 	$('#ctb-test-btn').on('click', function() {
-		ajax('ctb_test_connection', {})
+		wpAjax('ctb_test_connection', {})
 			.done(function(response) {
 				if (response.success) {
 					showStatus('#ctb-token-status', 'Connected! Found ' + response.data.accounts + ' account(s) (' + response.data.networks.join(', ') + ')', false);
@@ -73,22 +112,14 @@
 	});
 
 	// Server Settings
-	$('#ctb-use-local-server').on('change', function() {
-		$('.ctb-local-server-row').toggle(this.checked);
-	});
-
 	function testLocalServer(serverUrl) {
 		return fetch(serverUrl + '?health', { mode: 'cors' })
 			.then(function(response) {
 				if (!response.ok) throw new Error('Server returned ' + response.status);
 				return response.json();
 			})
-			.then(function(data) {
-				return data.status === 'ok';
-			})
-			.catch(function() {
-				return false;
-			});
+			.then(function(data) { return data.status === 'ok'; })
+			.catch(function() { return false; });
 	}
 
 	$('#ctb-test-local-server').on('click', function() {
@@ -106,17 +137,14 @@
 
 	$('#ctb-server-form').on('submit', function(e) {
 		e.preventDefault();
-		var useLocalServer = $('#ctb-use-local-server').is(':checked');
-		var localServerUrl = $('#ctb-local-server-url').val();
+		var localServerUrl = $('#ctb-local-server-url').val() || 'http://localhost:8787';
 
-		ajax('ctb_save_server_settings', {
-			use_local_server: useLocalServer ? '1' : '',
+		wpAjax('ctb_save_server_settings', {
 			local_server_url: localServerUrl
 		})
 			.done(function(response) {
 				if (response.success) {
-					config.useLocalServer = useLocalServer;
-					config.localServerUrl = localServerUrl;
+					config.mediaServerUrl = localServerUrl;
 					showStatus('#ctb-server-status', 'Settings saved.', false);
 				} else {
 					showStatus('#ctb-server-status', response.data || 'Error saving settings', true);
@@ -127,18 +155,19 @@
 			});
 	});
 
-	// Media Browser - Two Column Layout
+	// Media Browser
 
-	// Load chat list on page load
 	$(document).ready(function() {
 		if ($('#ctb-chat-list').length) {
 			loadChatList();
+			checkMediaServer();
 		}
+	});
 
-		// Check local server status on media browser page
+	function checkMediaServer() {
 		var $serverStatus = $('#ctb-local-server-status');
-		if ($serverStatus.length && config.useLocalServer && config.localServerUrl) {
-			testLocalServer(config.localServerUrl).then(function(ok) {
+		if ($serverStatus.length && config.mediaServerUrl) {
+			testLocalServer(config.mediaServerUrl).then(function(ok) {
 				$serverStatus
 					.removeClass('ctb-status-checking')
 					.addClass(ok ? 'ctb-status-ok' : 'ctb-status-error');
@@ -150,19 +179,16 @@
 				}
 			});
 		}
-	});
+	}
 
 	function loadChatList() {
-		ajax('ctb_get_chats', { type: 'all' })
-			.done(function(response) {
-				if (response.success) {
-					renderChatList(response.data.chats);
+		beeper.getAllChats()
+			.then(function(result) {
+				if (result.success) {
+					renderChatList(result.data.items || []);
 				} else {
-					$('#ctb-chat-list').html('<span class="ctb-error">Failed to load chats</span>');
+					$('#ctb-chat-list').html('<span class="ctb-error">Failed to load chats: ' + result.error + '</span>');
 				}
-			})
-			.fail(function() {
-				$('#ctb-chat-list').html('<span class="ctb-error">Failed to load chats</span>');
 			});
 	}
 
@@ -179,19 +205,13 @@
 			var $item = $('<button type="button" class="ctb-chat-pill">')
 				.data('chat', chat);
 
-			if (chat.avatar) {
-				var avatarUrl = proxyUrl(chat.avatar);
-				$item.append($('<img class="ctb-chat-avatar">').attr('src', avatarUrl));
-			} else {
-				$item.addClass('no-avatar');
-			}
-
-			$item.append($('<span class="ctb-chat-title">').text(chat.title));
+			// Skip avatar for now - would need async loading
+			$item.addClass('no-avatar');
+			$item.append($('<span class="ctb-chat-title">').text(chat.title || chat.name || 'Unknown'));
 			$list.append($item);
 		});
 	}
 
-	// Click on chat to select and load media
 	$(document).on('click', '.ctb-chat-pill', function() {
 		var $item = $(this);
 		var chat = $item.data('chat');
@@ -220,40 +240,26 @@
 		}
 		$spinner.addClass('is-active');
 
-		ajax('ctb_get_media', {
-			chat_id: currentChatId,
-			cursor: currentCursor || ''
-		})
-		.done(function(response) {
-			if (response.success) {
+		beeper.getMediaMessages(currentChatId, 50, currentCursor)
+			.then(function(result) {
+				if (!result.success) {
+					if (!append) {
+						$grid.html('<p class="ctb-empty">Error loading media: ' + result.error + '</p>');
+					}
+					return;
+				}
+
 				if (!append) {
 					$grid.empty();
 				}
-				renderMedia(response.data.media, $grid);
-				currentCursor = response.data.nextCursor;
-				$loadMore.toggle(response.data.hasMore);
-			} else {
-				if (!append) {
-					$grid.html('<p class="ctb-empty">Error loading media: ' + response.data + '</p>');
-				}
-			}
-		})
-		.fail(function() {
-			if (!append) {
-				$grid.html('<p class="ctb-empty">Failed to load media</p>');
-			}
-		})
-		.always(function() {
-			$spinner.removeClass('is-active');
-		});
-	}
 
-	function proxyUrl(url) {
-		if (!url) return url;
-		if (url.indexOf('localmxc://') === 0 || url.indexOf('mxc://') === 0) {
-			return config.ajaxUrl + '?action=ctb_serve_media&nonce=' + config.nonce + '&id=' + encodeURIComponent(url);
-		}
-		return url;
+				renderMedia(result.data.items, $grid);
+				currentCursor = result.data.nextCursor;
+				$loadMore.toggle(result.data.hasMore);
+			})
+			.finally(function() {
+				$spinner.removeClass('is-active');
+			});
 	}
 
 	function renderMedia(items, $container) {
@@ -263,29 +269,25 @@
 		}
 
 		items.forEach(function(item) {
+			var mxcUrl = item.mxcUrl;
+			if (!mxcUrl || (mxcUrl.indexOf('localmxc://') !== 0 && mxcUrl.indexOf('mxc://') !== 0)) {
+				return;
+			}
+
 			var $item = $('<div class="ctb-media-item">').data('media', item);
-
-			var thumbnailUrl = proxyUrl(item.thumbnailUrl || item.url);
-
-			var $img = $('<img>').attr('src', thumbnailUrl).attr('alt', '');
+			var $img = $('<img>').attr('alt', '');
 			$item.append($img);
 
-			// Check if already selected
+			loadImage($img, mxcUrl);
+
 			var isSelected = selectedMedia.some(function(m) { return m.id === item.id; });
 			if (isSelected) {
 				$item.addClass('selected');
 			}
 
-			// Mark as imported
-			if (item.imported) {
-				$item.addClass('imported');
-				$item.append('<div class="ctb-imported-badge">Imported</div>');
-			}
-
 			if (item.timestamp) {
 				var date = new Date(item.timestamp);
-				var dateStr = date.toLocaleDateString();
-				$item.append('<div class="ctb-media-date">' + dateStr + '</div>');
+				$item.append('<div class="ctb-media-date">' + date.toLocaleDateString() + '</div>');
 			}
 
 			$container.append($item);
@@ -297,23 +299,19 @@
 		var $item = $(this);
 		var media = $item.data('media');
 
-		// If we have a posted post already, start fresh for new selection
 		if (currentPostId && selectedMedia.length === 0) {
 			resetPostPanel();
 		}
 
-		// Check if already selected
 		var existingIndex = -1;
 		selectedMedia.forEach(function(m, i) {
 			if (m.id === media.id) existingIndex = i;
 		});
 
 		if (existingIndex >= 0) {
-			// Remove from selection
 			selectedMedia.splice(existingIndex, 1);
 			$item.removeClass('selected');
 		} else {
-			// Add to selection
 			selectedMedia.push(media);
 			$item.addClass('selected');
 
@@ -350,14 +348,15 @@
 		var earliestDate = null;
 
 		selectedMedia.forEach(function(item, index) {
-			var thumbnailUrl = proxyUrl(item.thumbnailUrl || item.url);
-
 			var $thumb = $('<div class="ctb-selected-thumb">').data('index', index);
-			$thumb.append($('<img>').attr('src', thumbnailUrl));
+			var $img = $('<img>');
+			$thumb.append($img);
 			$thumb.append('<button type="button" class="ctb-remove-selected">&times;</button>');
 			$grid.append($thumb);
 
-			// Track earliest date
+			// Load image
+			loadImage($img, item.mxcUrl);
+
 			if (item.timestamp) {
 				var itemDate = new Date(item.timestamp);
 				if (!earliestDate || itemDate < earliestDate) {
@@ -367,23 +366,19 @@
 		});
 		$container.append($grid);
 
-		// Update date field with earliest photo date
 		if (earliestDate) {
 			var localDate = new Date(earliestDate.getTime() - earliestDate.getTimezoneOffset() * 60000);
 			$('#ctb-post-date').val(localDate.toISOString().slice(0, 16));
 		}
 
-		// Enable buttons if we have images and title
 		updateButtonState();
 	}
 
-	// Remove from selected
 	$(document).on('click', '.ctb-remove-selected', function(e) {
 		e.stopPropagation();
 		var index = $(this).closest('.ctb-selected-thumb').data('index');
 		var removed = selectedMedia.splice(index, 1)[0];
 
-		// Clear title/content if they came from this media
 		if (removed.text && removed.text.trim()) {
 			var text = removed.text.trim();
 			if ($('#ctb-post-title').val().trim() === text) {
@@ -394,7 +389,6 @@
 			}
 		}
 
-		// Unselect in grid
 		$('.ctb-media-item').each(function() {
 			if ($(this).data('media').id === removed.id) {
 				$(this).removeClass('selected');
@@ -404,7 +398,6 @@
 		updateSelectedPanel();
 	});
 
-	// Update button state based on title and images
 	$('#ctb-post-title').on('input', updateButtonState);
 
 	function updateButtonState() {
@@ -426,19 +419,11 @@
 		$('#ctb-publish').text('Publish').prop('disabled', true);
 		$('input[name="ctb-format"]').prop('disabled', false);
 		updateSelectedPanel();
-
-		// Clear selection in grid
 		$('.ctb-media-item').removeClass('selected');
 	}
 
-	// Post creation
-	$('#ctb-save-draft').on('click', function() {
-		createPost('draft');
-	});
-
-	$('#ctb-publish').on('click', function() {
-		createPost('publish');
-	});
+	$('#ctb-save-draft').on('click', function() { createPost('draft'); });
+	$('#ctb-publish').on('click', function() { createPost('publish'); });
 
 	function createPost(status) {
 		var title = $('#ctb-post-title').val().trim();
@@ -450,56 +435,62 @@
 		if (!title || selectedMedia.length === 0) return;
 
 		$('#ctb-save-draft, #ctb-publish').prop('disabled', true);
-		$('#ctb-post-status').html('<div class="ctb-importing">Importing images and creating post...</div>');
+		$('#ctb-post-status').html('<div class="ctb-importing">Fetching images...</div>');
 
-		ajax('ctb_create_post', {
-			title: title,
-			content: content,
-			format: format,
-			status: status,
-			post_date: postDate,
-			media: JSON.stringify(selectedMedia),
-			chat_id: currentChatId
-		})
-		.done(function(response) {
-			if (response.success) {
-				currentPostId = response.data.post_id;
-
-				// Update panel to show created post
-				$('#ctb-panel-title').html('Post Created <a href="' + response.data.edit_url + '" target="_blank" class="ctb-edit-link">Edit</a>');
-				$('#ctb-post-title').prop('disabled', true);
-				$('#ctb-post-content').prop('disabled', true);
-				$('#ctb-post-date').prop('disabled', true);
-				$('#ctb-use-photo-date').prop('disabled', true);
-				$('input[name="ctb-format"]').prop('disabled', true);
-
-				var statusText = status === 'publish' ? 'Published' : 'Saved as draft';
-				$('#ctb-post-status').html(
-					'<div class="ctb-status ctb-status-success">' +
-					statusText + ' with ' + response.data.imported + ' image(s). ' +
-					'<a href="' + response.data.view_url + '" target="_blank">View post</a>' +
-					'</div>'
-				);
-
-				$('#ctb-save-draft').text('Update Draft');
-				$('#ctb-publish').text(status === 'publish' ? 'Published' : 'Publish');
-
-				// Clear selection but keep images shown
-				selectedMedia = [];
-				$('.ctb-media-item').removeClass('selected');
-
-				// Mark items as used
-				// Refresh to show imported status
-				loadMedia(false);
-			} else {
-				$('#ctb-post-status').html('<div class="ctb-status ctb-status-error">Error: ' + response.data + '</div>');
-				$('#ctb-save-draft, #ctb-publish').prop('disabled', false);
+		// Fetch all images as blobs, then upload to WordPress
+		var imagePromises = selectedMedia.map(function(item) {
+			// Return cached data URL or fetch fresh
+			if (imageCache[item.mxcUrl]) {
+				return Promise.resolve({
+					mxcUrl: item.mxcUrl,
+					dataUrl: imageCache[item.mxcUrl]
+				});
 			}
-		})
-		.fail(function() {
-			$('#ctb-post-status').html('<div class="ctb-status ctb-status-error">Request failed</div>');
-			$('#ctb-save-draft, #ctb-publish').prop('disabled', false);
+			return fetchImageAsDataUrl(item.mxcUrl).then(function(dataUrl) {
+				return { mxcUrl: item.mxcUrl, dataUrl: dataUrl };
+			});
 		});
+
+		Promise.all(imagePromises)
+			.then(function(images) {
+				$('#ctb-post-status').html('<div class="ctb-importing">Creating post...</div>');
+
+				// Send to WordPress with base64 image data
+				return wpAjax('ctb_create_post', {
+					title: title,
+					content: content,
+					format: format,
+					status: status,
+					post_date: postDate,
+					images: JSON.stringify(images),
+					chat_id: currentChatId
+				});
+			})
+			.then(function(response) {
+				if (response.success) {
+					currentPostId = response.data.post_id;
+					$('#ctb-panel-title').html('Post Created <a href="' + response.data.edit_url + '" target="_blank" class="ctb-edit-link">Edit</a>');
+					$('#ctb-post-title, #ctb-post-content, #ctb-post-date, #ctb-use-photo-date').prop('disabled', true);
+					$('input[name="ctb-format"]').prop('disabled', true);
+
+					var statusText = status === 'publish' ? 'Published' : 'Saved as draft';
+					$('#ctb-post-status').html(
+						'<div class="ctb-status ctb-status-success">' +
+						statusText + ' with ' + response.data.imported + ' image(s). ' +
+						'<a href="' + response.data.view_url + '" target="_blank">View post</a>' +
+						'</div>'
+					);
+
+					selectedMedia = [];
+					$('.ctb-media-item').removeClass('selected');
+				} else {
+					throw new Error(response.data);
+				}
+			})
+			.catch(function(err) {
+				$('#ctb-post-status').html('<div class="ctb-status ctb-status-error">Error: ' + err.message + '</div>');
+				$('#ctb-save-draft, #ctb-publish').prop('disabled', false);
+			});
 	}
 
 })(jQuery);

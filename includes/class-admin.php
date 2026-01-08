@@ -61,18 +61,26 @@ class Admin {
 		);
 
 		wp_enqueue_script(
+			'chat-to-blog-beeper-client',
+			CHAT_TO_BLOG_URL . 'assets/beeper-client.js',
+			[],
+			CHAT_TO_BLOG_VERSION,
+			true
+		);
+
+		wp_enqueue_script(
 			'chat-to-blog-admin',
 			CHAT_TO_BLOG_URL . 'assets/admin.js',
-			[ 'jquery' ],
+			[ 'jquery', 'chat-to-blog-beeper-client' ],
 			CHAT_TO_BLOG_VERSION,
 			true
 		);
 
 		wp_localize_script( 'chat-to-blog-admin', 'ctbConfig', [
-			'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
-			'nonce'          => wp_create_nonce( 'chat_to_blog' ),
-			'useLocalServer' => (bool) get_option( 'chat_to_blog_use_local_server', false ),
-			'localServerUrl' => get_option( 'chat_to_blog_local_server', 'http://localhost:8787' ),
+			'ajaxUrl'         => admin_url( 'admin-ajax.php' ),
+			'nonce'           => wp_create_nonce( 'chat_to_blog' ),
+			'beeperToken'     => $this->beeper->get_token(),
+			'mediaServerUrl'  => get_option( 'chat_to_blog_local_server', 'http://localhost:8787' ),
 		] );
 	}
 
@@ -128,10 +136,7 @@ class Admin {
 			wp_send_json_error( 'Permission denied' );
 		}
 
-		$use_local_server = ! empty( $_POST['use_local_server'] );
 		$local_server_url = esc_url_raw( $_POST['local_server_url'] ?? 'http://localhost:8787' );
-
-		update_option( 'chat_to_blog_use_local_server', $use_local_server );
 		update_option( 'chat_to_blog_local_server', $local_server_url );
 
 		wp_send_json_success( [ 'saved' => true ] );
@@ -342,49 +347,60 @@ class Admin {
 		$format = sanitize_text_field( $_POST['format'] ?? 'gallery' );
 		$status = sanitize_text_field( $_POST['status'] ?? 'draft' );
 		$post_date = sanitize_text_field( $_POST['post_date'] ?? '' );
-		$media_json = stripslashes( $_POST['media'] ?? '[]' );
-		$media_items = json_decode( $media_json, true );
+		$images_json = stripslashes( $_POST['images'] ?? '[]' );
+		$images = json_decode( $images_json, true );
 		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
 
 		if ( empty( $title ) ) {
 			wp_send_json_error( 'Title is required' );
 		}
 
-		if ( empty( $media_items ) ) {
+		if ( empty( $images ) ) {
 			wp_send_json_error( 'No images selected' );
 		}
 
-		// Import media using post title for naming
+		// Import images from base64 data
 		$attachment_ids = [];
 		$base_filename = sanitize_file_name( $title );
 		$import_errors = [];
 
-		foreach ( $media_items as $index => $item ) {
-			$beeper_id = $item['id'] ?? null;
+		foreach ( $images as $index => $image ) {
+			$mxc_url = $image['mxcUrl'] ?? null;
+			$data_url = $image['dataUrl'] ?? null;
 
-			// Check if already imported
-			if ( $beeper_id && $this->importer->is_imported( $beeper_id ) ) {
-				$attachment_ids[] = $this->importer->get_attachment_id( $beeper_id );
+			if ( ! $mxc_url || ! $data_url ) {
 				continue;
 			}
 
-			// Build filename: "post-title-1.jpg", "post-title-2.jpg", etc.
-			$ext = $this->get_extension_from_mime( $item['mimeType'] ?? '' ) ?: 'jpg';
-			$filename = count( $media_items ) > 1
+			// Check if already imported
+			if ( $this->importer->is_imported( $mxc_url ) ) {
+				$attachment_ids[] = $this->importer->get_attachment_id( $mxc_url );
+				continue;
+			}
+
+			// Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
+			if ( ! preg_match( '/^data:([^;]+);base64,(.+)$/', $data_url, $matches ) ) {
+				$import_errors[] = 'Invalid data URL format';
+				continue;
+			}
+
+			$mime_type = $matches[1];
+			$base64_data = $matches[2];
+			$binary_data = base64_decode( $base64_data );
+
+			if ( $binary_data === false ) {
+				$import_errors[] = 'Failed to decode base64 data';
+				continue;
+			}
+
+			// Build filename
+			$ext = $this->get_extension_from_mime( $mime_type ) ?: 'jpg';
+			$filename = count( $images ) > 1
 				? $base_filename . '-' . ( $index + 1 ) . '.' . $ext
 				: $base_filename . '.' . $ext;
 
-			$result = $this->importer->import_media(
-				$item['url'],
-				$filename,
-				$beeper_id,
-				[
-					'timestamp' => $item['timestamp'] ?? '',
-					'sender'    => $item['sender'] ?? '',
-					'caption'   => $item['text'] ?? '',
-					'chat_id'   => $chat_id,
-				]
-			);
+			// Save to WordPress media library
+			$result = $this->save_to_media_library( $binary_data, $filename, $mime_type, $mxc_url );
 
 			if ( is_wp_error( $result ) ) {
 				$import_errors[] = $result->get_error_message();
@@ -514,5 +530,37 @@ class Admin {
 			}
 		}
 		return trim( $blocks );
+	}
+
+	private function save_to_media_library( $binary_data, $filename, $mime_type, $mxc_url = null ) {
+		$upload = wp_upload_bits( $filename, null, $binary_data );
+
+		if ( $upload['error'] ) {
+			return new \WP_Error( 'upload_error', $upload['error'] );
+		}
+
+		$attachment = [
+			'post_mime_type' => $mime_type,
+			'post_title'     => pathinfo( $filename, PATHINFO_FILENAME ),
+			'post_content'   => '',
+			'post_status'    => 'inherit',
+		];
+
+		$attachment_id = wp_insert_attachment( $attachment, $upload['file'] );
+
+		if ( is_wp_error( $attachment_id ) ) {
+			return $attachment_id;
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		$metadata = wp_generate_attachment_metadata( $attachment_id, $upload['file'] );
+		wp_update_attachment_metadata( $attachment_id, $metadata );
+
+		// Track the mxc URL for deduplication
+		if ( $mxc_url ) {
+			update_post_meta( $attachment_id, '_chat_to_blog_mxc_url', $mxc_url );
+		}
+
+		return $attachment_id;
 	}
 }

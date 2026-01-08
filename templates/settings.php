@@ -70,36 +70,33 @@ $local_server_url = get_option( 'chat_to_blog_local_server', 'http://localhost:8
 	</div>
 
 	<div class="ctb-card">
-		<h2>Media Server</h2>
+		<h2>Local Media Server</h2>
 
-		<p>Choose how media files are served. Use the local server if WordPress can't access local files (e.g., WordPress Playground).</p>
+		<p>A local server is needed to serve image files until the Beeper API supports returning image contents directly.</p>
+
+		<div class="ctb-instructions">
+			<strong>To start the local media server:</strong>
+			<ol>
+				<li>Open a terminal in the plugin directory</li>
+				<li>Run: <code>php -S localhost:8787 local-media-server.php</code></li>
+				<li>Keep the terminal open while using Chat to Blog</li>
+			</ol>
+		</div>
 
 		<form id="ctb-server-form">
 			<table class="form-table">
 				<tr>
-					<th scope="row">Media Proxy</th>
-					<td>
-						<label>
-							<input type="checkbox" id="ctb-use-local-server" <?php checked( $use_local_server ); ?> />
-							Use external local media server
-						</label>
-						<p class="description">Enable this if running WordPress in an environment that can't access local files.</p>
-					</td>
-				</tr>
-				<tr class="ctb-local-server-row" <?php echo $use_local_server ? '' : 'style="display:none;"'; ?>>
 					<th scope="row"><label for="ctb-local-server-url">Server URL</label></th>
 					<td>
 						<input type="url" id="ctb-local-server-url" class="regular-text" value="<?php echo esc_attr( $local_server_url ); ?>" placeholder="http://localhost:8787" />
-						<p class="description">
-							Run the local server with: <code>php -S localhost:8787 local-media-server.php</code>
-						</p>
+						<p class="description">Default: http://localhost:8787</p>
 					</td>
 				</tr>
 			</table>
 
 			<p class="submit">
 				<button type="submit" class="button button-primary">Save Settings</button>
-				<button type="button" id="ctb-test-local-server" class="button">Test Local Server</button>
+				<button type="button" id="ctb-test-local-server" class="button">Test Connection</button>
 			</p>
 
 			<div id="ctb-server-status"></div>
