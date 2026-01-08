@@ -8,10 +8,12 @@
 	var config = window.ctbConfig || {};
 	var beeper = new BeeperClient(config.beeperToken);
 	var selectedMedia = [];
+	var postImages = []; // Images already in the current post: [{mxcUrl, attachmentId}]
 	var currentChatId = null;
 	var currentCursor = null;
 	var currentPostId = null;
 	var imageCache = {}; // Cache for loaded data URLs
+	var importedUrls = new Set(config.importedUrls || []);
 
 	// WordPress AJAX helper
 	function wpAjax(action, data) {
@@ -297,6 +299,10 @@
 				$item.addClass('selected');
 			}
 
+			if (importedUrls.has(mxcUrl)) {
+				$item.addClass('imported');
+			}
+
 			if (item.timestamp) {
 				var date = new Date(item.timestamp);
 				$item.append('<div class="ctb-media-date">' + date.toLocaleDateString() + '</div>');
@@ -323,6 +329,16 @@
 		if (existingIndex >= 0) {
 			selectedMedia.splice(existingIndex, 1);
 			$item.removeClass('selected');
+
+			if (media.text && media.text.trim()) {
+				var text = media.text.trim();
+				if ($('#ctb-post-title').val().trim() === text) {
+					$('#ctb-post-title').val('');
+				}
+				if ($('#ctb-post-content').val().trim() === text) {
+					$('#ctb-post-content').val('');
+				}
+			}
 		} else {
 			selectedMedia.push(media);
 			$item.addClass('selected');
@@ -359,14 +375,13 @@
 		var $grid = $('<div class="ctb-selected-grid">');
 		var earliestDate = null;
 
-		selectedMedia.forEach(function(item, index) {
-			var $thumb = $('<div class="ctb-selected-thumb">').data('index', index);
+		selectedMedia.forEach(function(item) {
+			var $thumb = $('<div class="ctb-selected-thumb">');
 			var $img = $('<img>');
 			$thumb.append($img);
 			$thumb.append('<button type="button" class="ctb-remove-selected">&times;</button>');
 			$grid.append($thumb);
 
-			// Load image
 			loadImage($img, item.mxcUrl);
 
 			if (item.timestamp) {
@@ -378,6 +393,15 @@
 		});
 		$container.append($grid);
 
+		new Sortable($grid[0], {
+			animation: 150,
+			ghostClass: 'ctb-sortable-ghost',
+			onEnd: function(evt) {
+				var item = selectedMedia.splice(evt.oldIndex, 1)[0];
+				selectedMedia.splice(evt.newIndex, 0, item);
+			}
+		});
+
 		if (earliestDate) {
 			var localDate = new Date(earliestDate.getTime() - earliestDate.getTimezoneOffset() * 60000);
 			$('#ctb-post-date').val(localDate.toISOString().slice(0, 16));
@@ -388,7 +412,8 @@
 
 	$(document).on('click', '.ctb-remove-selected', function(e) {
 		e.stopPropagation();
-		var index = $(this).closest('.ctb-selected-thumb').data('index');
+		var $thumb = $(this).closest('.ctb-selected-thumb');
+		var index = $thumb.index();
 		var removed = selectedMedia.splice(index, 1)[0];
 
 		if (removed.text && removed.text.trim()) {
@@ -412,20 +437,37 @@
 
 	$('#ctb-post-title').on('input', updateButtonState);
 
+	$('#ctb-post-title').on('keypress', function(e) {
+		if (e.which === 13) {
+			e.preventDefault();
+			if (!$('#ctb-publish').prop('disabled')) {
+				$('#ctb-publish').click();
+			}
+		}
+	});
+
+	$('#ctb-date-now').on('click', function(e) {
+		e.preventDefault();
+		var now = new Date();
+		var local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+		$('#ctb-post-date').val(local.toISOString().slice(0, 16));
+	});
+
 	function updateButtonState() {
 		var hasTitle = $('#ctb-post-title').val().trim().length > 0;
 		var hasImages = selectedMedia.length > 0;
-		$('#ctb-save-draft, #ctb-publish').prop('disabled', !(hasTitle && hasImages));
+		var canSubmit = hasTitle && (hasImages || currentPostId);
+		$('#ctb-save-draft, #ctb-publish').prop('disabled', !canSubmit);
 	}
 
 	function resetPostPanel() {
 		currentPostId = null;
 		selectedMedia = [];
+		postImages = [];
 		$('#ctb-panel-title').text('New Post');
 		$('#ctb-post-title').val('').prop('disabled', false);
 		$('#ctb-post-content').val('').prop('disabled', false);
 		$('#ctb-post-date').val('').prop('disabled', false);
-		$('#ctb-use-photo-date').prop('checked', true).prop('disabled', false);
 		$('#ctb-post-status').empty();
 		$('#ctb-save-draft').text('Save Draft').prop('disabled', true);
 		$('#ctb-publish').text('Publish').prop('disabled', true);
@@ -437,71 +479,166 @@
 	$('#ctb-save-draft').on('click', function() { createPost('draft'); });
 	$('#ctb-publish').on('click', function() { createPost('publish'); });
 
+	// Click on collapsed "New Post" to start fresh
+	$(document).on('click', '.ctb-new-post-collapsed', function() {
+		$(this).remove();
+		resetPostPanel();
+		restoreFormatPreference();
+
+		// Add collapsed edit panel below with stored info
+		var editPanels = $('.ctb-column-right').data('editPanels') || [];
+		if (editPanels.length > 0) {
+			renderCollapsedEditPanels(editPanels);
+		}
+	});
+
+	function renderCollapsedEditPanels(panels) {
+		$('.ctb-edit-panel-collapsed').remove();
+		panels.forEach(function(panel) {
+			var $el = $('<div class="ctb-panel ctb-edit-panel-collapsed">' +
+				'<div class="ctb-panel-header">' +
+				'<h3>' + $('<div>').text(panel.title).html() + '</h3>' +
+				'<span class="ctb-collapsed-links">' +
+				'<a href="' + panel.editUrl + '" target="_blank">Edit</a> · ' +
+				'<a href="' + panel.viewUrl + '" target="_blank">View</a>' +
+				'</span>' +
+				'</div></div>');
+			$('.ctb-column-right').append($el);
+		});
+	}
+
 	function createPost(status) {
 		var title = $('#ctb-post-title').val().trim();
 		var content = $('#ctb-post-content').val().trim();
 		var format = $('input[name="ctb-format"]:checked').val();
-		var usePhotoDate = $('#ctb-use-photo-date').is(':checked');
-		var postDate = usePhotoDate ? $('#ctb-post-date').val() : '';
+		var postDate = $('#ctb-post-date').val();
+		var isUpdate = !!currentPostId;
 
-		if (!title || selectedMedia.length === 0) return;
+		if (!title || (!isUpdate && selectedMedia.length === 0)) return;
 
 		$('#ctb-save-draft, #ctb-publish').prop('disabled', true);
-		$('#ctb-post-status').html('<div class="ctb-importing">Fetching images...</div>');
 
-		// Fetch all images as blobs, then upload to WordPress
-		var imagePromises = selectedMedia.map(function(item) {
-			// Return cached data URL or fetch fresh
-			if (imageCache[item.mxcUrl]) {
-				return Promise.resolve({
-					mxcUrl: item.mxcUrl,
-					dataUrl: imageCache[item.mxcUrl]
-				});
-			}
-			return fetchImageAsDataUrl(item.mxcUrl).then(function(dataUrl) {
-				return { mxcUrl: item.mxcUrl, dataUrl: dataUrl };
+		var doSubmit = function(images) {
+			$('#ctb-post-status').html('<div class="ctb-importing">' + (isUpdate ? 'Updating' : 'Creating') + ' post...</div>');
+
+			return wpAjax('ctb_create_post', {
+				post_id: currentPostId || '',
+				title: title,
+				content: content,
+				format: format,
+				status: status,
+				post_date: postDate,
+				images: JSON.stringify(images),
+				chat_id: currentChatId
 			});
+		};
+
+		// Filter to only new images (not already in postImages)
+		var postImageUrls = postImages.map(function(img) { return img.mxcUrl; });
+		var newMedia = selectedMedia.filter(function(item) {
+			return postImageUrls.indexOf(item.mxcUrl) === -1;
 		});
 
-		Promise.all(imagePromises)
-			.then(function(images) {
-				$('#ctb-post-status').html('<div class="ctb-importing">Creating post...</div>');
-
-				// Send to WordPress with base64 image data
-				return wpAjax('ctb_create_post', {
-					title: title,
-					content: content,
-					format: format,
-					status: status,
-					post_date: postDate,
-					images: JSON.stringify(images),
-					chat_id: currentChatId
+		var submitPromise;
+		if (newMedia.length > 0) {
+			$('#ctb-post-status').html('<div class="ctb-importing">Fetching images...</div>');
+			var imagePromises = newMedia.map(function(item) {
+				if (imageCache[item.mxcUrl]) {
+					return Promise.resolve({
+						mxcUrl: item.mxcUrl,
+						dataUrl: imageCache[item.mxcUrl]
+					});
+				}
+				return fetchImageAsDataUrl(item.mxcUrl).then(function(dataUrl) {
+					return { mxcUrl: item.mxcUrl, dataUrl: dataUrl };
 				});
-			})
+			});
+			submitPromise = Promise.all(imagePromises).then(doSubmit);
+		} else {
+			submitPromise = doSubmit([]);
+		}
+
+		submitPromise
 			.then(function(response) {
 				if (response.success) {
+					var wasNew = !currentPostId;
 					currentPostId = response.data.post_id;
-					$('#ctb-panel-title').html('Post Created <a href="' + response.data.edit_url + '" target="_blank" class="ctb-edit-link">Edit</a>');
-					$('#ctb-post-title, #ctb-post-content, #ctb-post-date, #ctb-use-photo-date').prop('disabled', true);
+
+					var postTitle = $('#ctb-post-title').val().trim();
+					$('#ctb-panel-title').text(postTitle || 'Edit Post');
+					$('#ctb-save-draft').text('Convert to Draft');
+					$('#ctb-publish').text('Update');
 					$('input[name="ctb-format"]').prop('disabled', true);
 
-					var statusText = status === 'publish' ? 'Published' : 'Saved as draft';
+					// Add collapsed "New Post" panel above if not already present
+					if (!$('.ctb-new-post-collapsed').length) {
+						var $collapsed = $('<div class="ctb-panel ctb-new-post-collapsed">' +
+							'<div class="ctb-panel-header ctb-panel-header-clickable">' +
+							'<h3>+ New Post</h3>' +
+							'</div></div>');
+						$('.ctb-post-panel').before($collapsed);
+					}
+
+					// Store this panel's info for later if user starts a new post
+					var editPanels = $('.ctb-column-right').data('editPanels') || [];
+					// Remove if already exists (updating same post)
+					editPanels = editPanels.filter(function(p) { return p.postId !== currentPostId; });
+					editPanels.unshift({
+						postId: currentPostId,
+						title: postTitle,
+						editUrl: response.data.edit_url,
+						viewUrl: response.data.view_url
+					});
+					$('.ctb-column-right').data('editPanels', editPanels);
+
+					var statusText;
+					var newImageCount = newMedia.length;
+					if (wasNew) {
+						statusText = status === 'publish' ? 'Published' : 'Saved as draft';
+						if (newImageCount > 0) {
+							statusText += ' with ' + newImageCount + ' image(s).';
+						}
+					} else {
+						statusText = status === 'publish' ? 'Updated' : 'Converted to draft';
+						if (newImageCount > 0) {
+							statusText += ', added ' + newImageCount + ' image(s).';
+						} else {
+							statusText += '.';
+						}
+					}
+
 					$('#ctb-post-status').html(
 						'<div class="ctb-status ctb-status-success">' +
-						statusText + ' with ' + response.data.imported + ' image(s). ' +
-						'<a href="' + response.data.view_url + '" target="_blank">View post</a>' +
+						statusText + ' ' +
+						'<a href="' + response.data.edit_url + '" target="_blank">Edit</a> · ' +
+						'<a href="' + response.data.view_url + '" target="_blank">View</a>' +
 						'</div>'
 					);
 
-					selectedMedia = [];
-					$('.ctb-media-item').removeClass('selected');
+					// Update postImages with returned images
+					if (response.data.images) {
+						response.data.images.forEach(function(img) {
+							var exists = postImages.some(function(p) { return p.mxcUrl === img.mxcUrl; });
+							if (!exists) {
+								postImages.push(img);
+							}
+							importedUrls.add(img.mxcUrl);
+							$('.ctb-media-item').each(function() {
+								if ($(this).data('media').mxcUrl === img.mxcUrl) {
+									$(this).addClass('imported');
+								}
+							});
+						});
+					}
+
+					updateButtonState();
 				} else {
 					throw new Error(response.data);
 				}
 			})
 			.catch(function(err) {
 				$('#ctb-post-status').html('<div class="ctb-status ctb-status-error">Error: ' + err.message + '</div>');
-				$('#ctb-save-draft, #ctb-publish').prop('disabled', false);
+				updateButtonState();
 			});
 	}
 

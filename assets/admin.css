@@ -588,14 +588,15 @@
 }
 
 .ctb-selected-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+	display: flex;
+	flex-wrap: wrap;
 	gap: 8px;
 }
 
 .ctb-selected-thumb {
 	position: relative;
-	aspect-ratio: 1;
+	width: 60px;
+	height: 60px;
 	border-radius: 4px;
 	overflow: hidden;
 }
@@ -635,6 +636,55 @@
 	background: rgba(200, 0, 0, 0.8);
 }
 
+.ctb-sortable-ghost {
+	opacity: 0.4;
+}
+
+.ctb-selected-grid {
+	cursor: grab;
+}
+
+/* Collapsed panels */
+.ctb-new-post-collapsed,
+.ctb-edit-panel-collapsed {
+	margin-bottom: 10px;
+}
+
+.ctb-panel-header-clickable {
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.ctb-panel-header-clickable:hover {
+	background: #eee;
+}
+
+.ctb-new-post-collapsed .ctb-panel-header h3 {
+	color: #2271b1;
+}
+
+.ctb-edit-panel-collapsed .ctb-panel-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.ctb-edit-panel-collapsed .ctb-panel-header h3 {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ctb-collapsed-links {
+	font-size: 12px;
+	font-weight: normal;
+}
+
+.ctb-collapsed-links a {
+	text-decoration: none;
+}
+
 .ctb-hint {
 	color: #666;
 	font-size: 13px;
@@ -649,13 +699,17 @@
 	gap: 10px;
 }
 
-.ctb-date-group label:first-child {
+.ctb-date-group > label {
 	white-space: nowrap;
-	font-weight: normal;
 }
 
 .ctb-date-group input[type="datetime-local"] {
 	flex: 1;
+}
+
+.ctb-date-group a {
+	white-space: nowrap;
+	text-decoration: none;
 }
 
 .ctb-format-options {

@@ -81,11 +81,9 @@ $is_configured = $beeper->is_configured();
 						</div>
 
 						<div class="ctb-form-group ctb-date-group">
-							<label>
-								<input type="checkbox" id="ctb-use-photo-date" checked />
-								Use photo date
-							</label>
+							<label for="ctb-post-date">Date</label>
 							<input type="datetime-local" id="ctb-post-date" />
+							<a href="#" id="ctb-date-now">Now</a>
 						</div>
 
 						<div class="ctb-form-group">

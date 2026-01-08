@@ -69,9 +69,17 @@ class Admin {
 		);
 
 		wp_enqueue_script(
+			'sortablejs',
+			CHAT_TO_BLOG_URL . 'assets/sortable.min.js',
+			[],
+			'1.15.6',
+			true
+		);
+
+		wp_enqueue_script(
 			'chat-to-blog-admin',
 			CHAT_TO_BLOG_URL . 'assets/admin.js',
-			[ 'jquery', 'chat-to-blog-beeper-client' ],
+			[ 'jquery', 'sortablejs', 'chat-to-blog-beeper-client' ],
 			CHAT_TO_BLOG_VERSION,
 			true
 		);
@@ -81,6 +89,7 @@ class Admin {
 			'nonce'           => wp_create_nonce( 'chat_to_blog' ),
 			'beeperToken'     => $this->beeper->get_token(),
 			'mediaServerUrl'  => get_option( 'chat_to_blog_local_server', 'http://localhost:8787' ),
+			'importedUrls'    => array_keys( $this->importer->get_all_imported_urls() ),
 		] );
 	}
 
@@ -342,6 +351,7 @@ class Admin {
 			wp_send_json_error( 'Permission denied' );
 		}
 
+		$post_id = intval( $_POST['post_id'] ?? 0 );
 		$title = sanitize_text_field( $_POST['title'] ?? '' );
 		$content = wp_kses_post( $_POST['content'] ?? '' );
 		$format = sanitize_text_field( $_POST['format'] ?? 'gallery' );
@@ -355,12 +365,51 @@ class Admin {
 			wp_send_json_error( 'Title is required' );
 		}
 
-		if ( empty( $images ) ) {
+		if ( empty( $images ) && ! $post_id ) {
 			wp_send_json_error( 'No images selected' );
 		}
 
+		// If updating existing post (without new images)
+		if ( $post_id && empty( $images ) ) {
+			$post = get_post( $post_id );
+			if ( ! $post || ! current_user_can( 'edit_post', $post_id ) ) {
+				wp_send_json_error( 'Cannot edit this post' );
+			}
+
+			$post_args = [
+				'ID'           => $post_id,
+				'post_title'   => $title,
+				'post_status'  => $status,
+			];
+
+			if ( ! empty( $post_date ) ) {
+				$date = new \DateTime( $post_date );
+				$post_args['post_date'] = $date->format( 'Y-m-d H:i:s' );
+				$post_args['post_date_gmt'] = get_gmt_from_date( $post_args['post_date'] );
+			}
+
+			wp_update_post( $post_args );
+
+			wp_send_json_success( [
+				'post_id'  => $post_id,
+				'edit_url' => get_edit_post_link( $post_id, 'raw' ),
+				'view_url' => get_permalink( $post_id ),
+				'imported' => 0,
+				'images'   => [],
+			] );
+			return;
+		}
+
+		// Validate existing post if updating
+		if ( $post_id ) {
+			$post = get_post( $post_id );
+			if ( ! $post || ! current_user_can( 'edit_post', $post_id ) ) {
+				wp_send_json_error( 'Cannot edit this post' );
+			}
+		}
+
 		// Import images from base64 data
-		$attachment_ids = [];
+		$imported_images = []; // {mxcUrl, attachmentId}
 		$base_filename = sanitize_file_name( $title );
 		$import_errors = [];
 
@@ -374,7 +423,10 @@ class Admin {
 
 			// Check if already imported
 			if ( $this->importer->is_imported( $mxc_url ) ) {
-				$attachment_ids[] = $this->importer->get_attachment_id( $mxc_url );
+				$imported_images[] = [
+					'mxcUrl'       => $mxc_url,
+					'attachmentId' => $this->importer->get_attachment_id( $mxc_url ),
+				];
 				continue;
 			}
 
@@ -405,41 +457,73 @@ class Admin {
 			if ( is_wp_error( $result ) ) {
 				$import_errors[] = $result->get_error_message();
 			} else {
-				$attachment_ids[] = $result;
+				$imported_images[] = [
+					'mxcUrl'       => $mxc_url,
+					'attachmentId' => $result,
+				];
 			}
 		}
+
+		$attachment_ids = array_column( $imported_images, 'attachmentId' );
 
 		if ( empty( $attachment_ids ) ) {
 			wp_send_json_error( 'Failed to import images: ' . implode( ', ', $import_errors ) );
 		}
 
-		// Build post content with images
-		if ( $format === 'gallery' ) {
-			$gallery_block = $this->build_gallery_block( $attachment_ids );
-			$post_content = $gallery_block . ( $content ? "\n\n" . $content : '' );
+		// Build image blocks for new images
+		$new_image_blocks = $this->build_image_blocks( $attachment_ids );
+
+		if ( $post_id ) {
+			// Updating existing post - append new images to content
+			$existing_post = get_post( $post_id );
+			$existing_content = $existing_post->post_content;
+
+			// Insert new images before any text content (after existing images)
+			// Find the last image/gallery block and insert after it
+			$post_content = $existing_content . "\n\n" . $new_image_blocks;
+
+			$post_args = [
+				'ID'           => $post_id,
+				'post_title'   => $title,
+				'post_content' => $post_content,
+				'post_status'  => $status,
+			];
+
+			if ( ! empty( $post_date ) ) {
+				$date = new \DateTime( $post_date );
+				$post_args['post_date'] = $date->format( 'Y-m-d H:i:s' );
+				$post_args['post_date_gmt'] = get_gmt_from_date( $post_args['post_date'] );
+			}
+
+			wp_update_post( $post_args );
 		} else {
-			$image_blocks = $this->build_image_blocks( $attachment_ids );
-			$post_content = $image_blocks . ( $content ? "\n\n" . $content : '' );
-		}
+			// Creating new post
+			if ( $format === 'gallery' ) {
+				$gallery_block = $this->build_gallery_block( $attachment_ids );
+				$post_content = $gallery_block . ( $content ? "\n\n" . $content : '' );
+			} else {
+				$post_content = $new_image_blocks . ( $content ? "\n\n" . $content : '' );
+			}
 
-		$post_args = [
-			'post_title'   => $title,
-			'post_content' => $post_content,
-			'post_status'  => $status,
-			'post_type'    => 'post',
-		];
+			$post_args = [
+				'post_title'   => $title,
+				'post_content' => $post_content,
+				'post_status'  => $status,
+				'post_type'    => 'post',
+			];
 
-		if ( ! empty( $post_date ) ) {
-			$date = new \DateTime( $post_date );
-			$post_args['post_date'] = $date->format( 'Y-m-d H:i:s' );
-			$post_args['post_date_gmt'] = get_gmt_from_date( $post_args['post_date'] );
-			$post_args['post_status'] = 'publish';
-		}
+			if ( ! empty( $post_date ) ) {
+				$date = new \DateTime( $post_date );
+				$post_args['post_date'] = $date->format( 'Y-m-d H:i:s' );
+				$post_args['post_date_gmt'] = get_gmt_from_date( $post_args['post_date'] );
+				$post_args['post_status'] = 'publish';
+			}
 
-		$post_id = wp_insert_post( $post_args );
+			$post_id = wp_insert_post( $post_args );
 
-		if ( is_wp_error( $post_id ) ) {
-			wp_send_json_error( $post_id->get_error_message() );
+			if ( is_wp_error( $post_id ) ) {
+				wp_send_json_error( $post_id->get_error_message() );
+			}
 		}
 
 		// Attach all images to this post
@@ -455,6 +539,7 @@ class Admin {
 			'edit_url' => get_edit_post_link( $post_id, 'raw' ),
 			'view_url' => get_permalink( $post_id ),
 			'imported' => count( $attachment_ids ),
+			'images'   => $imported_images,
 			'errors'   => $import_errors,
 		] );
 	}
