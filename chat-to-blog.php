@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Chat to Blog
- * Description: Import media from Beeper group chats and create blog posts
+ * Description: Import media from Beeper chats and create blog posts
  * Version: 1.0.0
  * Author: Alex
  * License: GPL v2 or later

@@ -288,11 +288,22 @@
 				return;
 			}
 
+			var isVideo = item.type === 'video' || (item.mimeType && item.mimeType.indexOf('video/') === 0);
 			var $item = $('<div class="ctb-media-item">').data('media', item);
+
+			if (isVideo) {
+				$item.addClass('ctb-media-video');
+			}
+
 			var $img = $('<img>').attr('alt', '');
 			$item.append($img);
 
-			loadImage($img, mxcUrl);
+			if (isVideo) {
+				$item.append('<div class="ctb-video-badge">VIDEO</div>');
+			}
+
+			var thumbnailUrl = isVideo && item.thumbnailUrl ? item.thumbnailUrl : mxcUrl;
+			loadImage($img, thumbnailUrl);
 
 			var isSelected = selectedMedia.some(function(m) { return m.id === item.id; });
 			if (isSelected) {
@@ -376,13 +387,25 @@
 		var earliestDate = null;
 
 		selectedMedia.forEach(function(item) {
+			var isVideo = item.type === 'video' || (item.mimeType && item.mimeType.indexOf('video/') === 0);
 			var $thumb = $('<div class="ctb-selected-thumb">');
+
+			if (isVideo) {
+				$thumb.addClass('ctb-selected-video');
+			}
+
 			var $img = $('<img>');
 			$thumb.append($img);
+
+			if (isVideo) {
+				$thumb.append('<div class="ctb-video-badge">VIDEO</div>');
+			}
+
 			$thumb.append('<button type="button" class="ctb-remove-selected">&times;</button>');
 			$grid.append($thumb);
 
-			loadImage($img, item.mxcUrl);
+			var thumbnailUrl = isVideo && item.thumbnailUrl ? item.thumbnailUrl : item.mxcUrl;
+			loadImage($img, thumbnailUrl);
 
 			if (item.timestamp) {
 				var itemDate = new Date(item.timestamp);

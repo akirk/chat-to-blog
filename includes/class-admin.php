@@ -499,8 +499,8 @@ class Admin {
 		} else {
 			// Creating new post
 			if ( $format === 'gallery' ) {
-				$gallery_block = $this->build_gallery_block( $attachment_ids );
-				$post_content = $gallery_block . ( $content ? "\n\n" . $content : '' );
+				$post_content = $this->build_mixed_gallery_content( $attachment_ids );
+				$post_content .= $content ? "\n\n" . $content : '';
 			} else {
 				$post_content = $new_image_blocks . ( $content ? "\n\n" . $content : '' );
 			}
@@ -557,6 +557,32 @@ class Admin {
 		return $map[ $mime_type ] ?? null;
 	}
 
+	private function build_mixed_gallery_content( $attachment_ids ) {
+		$image_ids = [];
+		$video_ids = [];
+
+		foreach ( $attachment_ids as $id ) {
+			$mime_type = get_post_mime_type( $id );
+			if ( strpos( $mime_type, 'video/' ) === 0 ) {
+				$video_ids[] = $id;
+			} else {
+				$image_ids[] = $id;
+			}
+		}
+
+		$content = '';
+
+		if ( ! empty( $image_ids ) ) {
+			$content .= $this->build_gallery_block( $image_ids );
+		}
+
+		foreach ( $video_ids as $video_id ) {
+			$content .= "\n\n" . trim( $this->build_video_block( $video_id ) );
+		}
+
+		return trim( $content );
+	}
+
 	private function build_gallery_block( $attachment_ids ) {
 		$images = [];
 		foreach ( $attachment_ids as $id ) {
@@ -596,8 +622,16 @@ class Admin {
 		$blocks = '';
 		foreach ( $attachment_ids as $id ) {
 			$url = wp_get_attachment_url( $id );
-			$alt = get_post_meta( $id, '_wp_attachment_image_alt', true );
-			if ( $url ) {
+			$mime_type = get_post_mime_type( $id );
+
+			if ( ! $url ) {
+				continue;
+			}
+
+			if ( strpos( $mime_type, 'video/' ) === 0 ) {
+				$blocks .= $this->build_video_block( $id, $url );
+			} else {
+				$alt = get_post_meta( $id, '_wp_attachment_image_alt', true );
 				$blocks .= sprintf(
 					'<!-- wp:image {"id":%d,"sizeSlug":"large","linkDestination":"none"} -->' .
 					'<figure class="wp-block-image size-large"><img src="%s" alt="%s" class="wp-image-%d"/></figure>' .
@@ -610,6 +644,24 @@ class Admin {
 			}
 		}
 		return trim( $blocks );
+	}
+
+	private function build_video_block( $id, $url = null ) {
+		if ( ! $url ) {
+			$url = wp_get_attachment_url( $id );
+		}
+
+		if ( ! $url ) {
+			return '';
+		}
+
+		return sprintf(
+			'<!-- wp:video {"id":%d} -->' .
+			'<figure class="wp-block-video"><video controls src="%s"></video></figure>' .
+			'<!-- /wp:video -->' . "\n\n",
+			$id,
+			esc_url( $url )
+		);
 	}
 
 	private function save_to_media_library( $binary_data, $filename, $mime_type, $mxc_url = null ) {
