@@ -505,6 +505,7 @@
 		$('#ctb-post-title').val('');
 		$('#ctb-post-content').val('');
 		$('#ctb-post-date').val('');
+		$('#ctb-post-category').val('');
 		$('#ctb-post-status').empty();
 		$('#ctb-save-draft').prop('disabled', true);
 		$('#ctb-publish').prop('disabled', true);
@@ -535,6 +536,7 @@
 		var content = $('#ctb-post-content').val().trim();
 		var format = $('input[name="ctb-format"]:checked').val();
 		var postDate = $('#ctb-post-date').val();
+		var category = $('#ctb-post-category').val() || '';
 
 		if (!title || selectedMedia.length === 0) return;
 
@@ -562,6 +564,7 @@
 				format: format,
 				status: status,
 				post_date: postDate,
+				category: category,
 				images: JSON.stringify(images),
 				chat_id: currentChatId
 			});

@@ -10,6 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 $user_id = get_current_user_id();
 $beeper = new \ChatToBlog\BeeperAPI( $user_id );
 $is_configured = $beeper->is_configured();
+$categories = get_categories( [ 'hide_empty' => false ] );
 ?>
 
 <div class="wrap ctb-media-browser">
@@ -82,6 +83,20 @@ $is_configured = $beeper->is_configured();
 							<input type="datetime-local" id="ctb-post-date" />
 							<a href="#" id="ctb-date-now"><?php esc_html_e( 'Now', 'chat-to-blog' ); ?></a>
 						</div>
+
+						<?php if ( ! empty( $categories ) ) : ?>
+						<div class="ctb-form-group">
+							<label for="ctb-post-category"><?php esc_html_e( 'Category', 'chat-to-blog' ); ?></label>
+							<select id="ctb-post-category">
+								<option value=""><?php esc_html_e( 'None', 'chat-to-blog' ); ?></option>
+								<?php foreach ( $categories as $category ) : ?>
+									<option value="<?php echo esc_attr( $category->term_id ); ?>">
+										<?php echo esc_html( $category->name ); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+						</div>
+						<?php endif; ?>
 
 						<div class="ctb-form-group">
 							<label><?php esc_html_e( 'Format', 'chat-to-blog' ); ?></label>

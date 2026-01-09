@@ -367,6 +367,7 @@ class Admin {
 		$format = sanitize_text_field( $_POST['format'] ?? 'gallery' );
 		$status = sanitize_text_field( $_POST['status'] ?? 'draft' );
 		$post_date = sanitize_text_field( $_POST['post_date'] ?? '' );
+		$category = intval( $_POST['category'] ?? 0 );
 		$images_json = stripslashes( $_POST['images'] ?? '[]' );
 		$images = json_decode( $images_json, true );
 		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
@@ -399,6 +400,10 @@ class Admin {
 			}
 
 			wp_update_post( $post_args );
+
+			if ( $category > 0 ) {
+				wp_set_post_categories( $post_id, [ $category ] );
+			}
 
 			wp_send_json_success( [
 				'post_id'  => $post_id,
@@ -542,6 +547,10 @@ class Admin {
 				'ID'          => $attachment_id,
 				'post_parent' => $post_id,
 			] );
+		}
+
+		if ( $category > 0 ) {
+			wp_set_post_categories( $post_id, [ $category ] );
 		}
 
 		wp_send_json_success( [
