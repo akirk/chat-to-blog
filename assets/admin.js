@@ -9,10 +9,8 @@
 	var config = window.ctbConfig || {};
 	var beeper = new BeeperClient(config.beeperToken);
 	var selectedMedia = [];
-	var postImages = [];
 	var currentChatId = null;
 	var currentCursor = null;
-	var currentPostId = null;
 	var imageCache = {};
 	var importedUrls = new Set(config.importedUrls || []);
 
@@ -271,7 +269,7 @@
 		}
 		$spinner.addClass('is-active');
 
-		beeper.getMediaMessages(currentChatId, 50, currentCursor)
+		beeper.getMediaMessages(currentChatId, currentCursor)
 			.then(function(result) {
 				if (!result.success) {
 					if (!append) {
@@ -298,6 +296,8 @@
 	}
 
 	function renderMedia(items, $container) {
+		$container.find('.ctb-empty').remove();
+
 		if (items.length === 0 && $container.children().length === 0) {
 			$container.html('<p class="ctb-empty">' + __('No media found in this chat', 'chat-to-blog') + '</p>');
 			return;
@@ -348,10 +348,6 @@
 	$(document).on('click', '.ctb-media-item', function() {
 		var $item = $(this);
 		var media = $item.data('media');
-
-		if (currentPostId && selectedMedia.length === 0) {
-			resetPostPanel();
-		}
 
 		var existingIndex = -1;
 		selectedMedia.forEach(function(m, i) {
@@ -500,41 +496,24 @@
 	function updateButtonState() {
 		var hasTitle = $('#ctb-post-title').val().trim().length > 0;
 		var hasImages = selectedMedia.length > 0;
-		var canSubmit = hasTitle && (hasImages || currentPostId);
-		$('#ctb-save-draft, #ctb-publish').prop('disabled', !canSubmit);
+		$('#ctb-save-draft, #ctb-publish').prop('disabled', !(hasTitle && hasImages));
 	}
 
 	function resetPostPanel() {
-		currentPostId = null;
 		selectedMedia = [];
-		postImages = [];
 		$('#ctb-panel-title').text(__('New Post', 'chat-to-blog'));
-		$('#ctb-post-title').val('').prop('disabled', false);
-		$('#ctb-post-content').val('').prop('disabled', false);
-		$('#ctb-post-date').val('').prop('disabled', false);
+		$('#ctb-post-title').val('');
+		$('#ctb-post-content').val('');
+		$('#ctb-post-date').val('');
 		$('#ctb-post-status').empty();
-		$('#ctb-save-draft').text(__('Save Draft', 'chat-to-blog')).prop('disabled', true);
-		$('#ctb-publish').text(__('Publish', 'chat-to-blog')).prop('disabled', true);
-		$('input[name="ctb-format"]').prop('disabled', false);
+		$('#ctb-save-draft').prop('disabled', true);
+		$('#ctb-publish').prop('disabled', true);
 		updateSelectedPanel();
 		$('.ctb-media-item').removeClass('selected');
 	}
 
 	$('#ctb-save-draft').on('click', function() { createPost('draft'); });
 	$('#ctb-publish').on('click', function() { createPost('publish'); });
-
-	// Click on collapsed "New Post" to start fresh
-	$(document).on('click', '.ctb-new-post-collapsed', function() {
-		$(this).remove();
-		resetPostPanel();
-		restoreFormatPreference();
-
-		// Add collapsed edit panel below with stored info
-		var editPanels = $('.ctb-column-right').data('editPanels') || [];
-		if (editPanels.length > 0) {
-			renderCollapsedEditPanels(editPanels);
-		}
-	});
 
 	function renderCollapsedEditPanels(panels) {
 		$('.ctb-edit-panel-collapsed').remove();
@@ -556,17 +535,28 @@
 		var content = $('#ctb-post-content').val().trim();
 		var format = $('input[name="ctb-format"]:checked').val();
 		var postDate = $('#ctb-post-date').val();
-		var isUpdate = !!currentPostId;
 
-		if (!title || (!isUpdate && selectedMedia.length === 0)) return;
+		if (!title || selectedMedia.length === 0) return;
 
 		$('#ctb-save-draft, #ctb-publish').prop('disabled', true);
+		$('#ctb-post-status').html('<div class="ctb-importing">' + __('Fetching media...', 'chat-to-blog') + '</div>');
 
-		var doSubmit = function(images) {
-			$('#ctb-post-status').html('<div class="ctb-importing">' + (isUpdate ? __('Updating post...', 'chat-to-blog') : __('Creating post...', 'chat-to-blog')) + '</div>');
+		var imagePromises = selectedMedia.map(function(item) {
+			if (imageCache[item.mxcUrl]) {
+				return Promise.resolve({
+					mxcUrl: item.mxcUrl,
+					dataUrl: imageCache[item.mxcUrl]
+				});
+			}
+			return fetchImageAsDataUrl(item.mxcUrl).then(function(dataUrl) {
+				return { mxcUrl: item.mxcUrl, dataUrl: dataUrl };
+			});
+		});
+
+		var submitPromise = Promise.all(imagePromises).then(function(images) {
+			$('#ctb-post-status').html('<div class="ctb-importing">' + __('Creating post...', 'chat-to-blog') + '</div>');
 
 			return wpAjax('ctb_create_post', {
-				post_id: currentPostId || '',
 				title: title,
 				content: content,
 				format: format,
@@ -575,100 +565,24 @@
 				images: JSON.stringify(images),
 				chat_id: currentChatId
 			});
-		};
-
-		var postImageUrls = postImages.map(function(img) { return img.mxcUrl; });
-		var newMedia = selectedMedia.filter(function(item) {
-			return postImageUrls.indexOf(item.mxcUrl) === -1;
 		});
-
-		var submitPromise;
-		if (newMedia.length > 0) {
-			$('#ctb-post-status').html('<div class="ctb-importing">' + __('Fetching media...', 'chat-to-blog') + '</div>');
-			var imagePromises = newMedia.map(function(item) {
-				if (imageCache[item.mxcUrl]) {
-					return Promise.resolve({
-						mxcUrl: item.mxcUrl,
-						dataUrl: imageCache[item.mxcUrl]
-					});
-				}
-				return fetchImageAsDataUrl(item.mxcUrl).then(function(dataUrl) {
-					return { mxcUrl: item.mxcUrl, dataUrl: dataUrl };
-				});
-			});
-			submitPromise = Promise.all(imagePromises).then(doSubmit);
-		} else {
-			submitPromise = doSubmit([]);
-		}
 
 		submitPromise
 			.then(function(response) {
 				if (response.success) {
-					var wasNew = !currentPostId;
-					currentPostId = response.data.post_id;
-
 					var postTitle = $('#ctb-post-title').val().trim();
-					$('#ctb-panel-title').text(postTitle || __('Edit Post', 'chat-to-blog'));
-					$('#ctb-save-draft').text(__('Convert to Draft', 'chat-to-blog'));
-					$('#ctb-publish').text(__('Update', 'chat-to-blog'));
-					$('input[name="ctb-format"]').prop('disabled', true);
-
-					if (!$('.ctb-new-post-collapsed').length) {
-						var $collapsed = $('<div class="ctb-panel ctb-new-post-collapsed">' +
-							'<div class="ctb-panel-header ctb-panel-header-clickable">' +
-							'<h3>+ ' + __('New Post', 'chat-to-blog') + '</h3>' +
-							'</div></div>');
-						$('.ctb-post-panel').before($collapsed);
+					var imageCount = selectedMedia.length;
+					var statusText = status === 'publish' ? __('Published', 'chat-to-blog') : __('Saved as draft', 'chat-to-blog');
+					if (imageCount > 0) {
+						statusText += ' ' + sprintf(
+							/* translators: %d: number of images */
+							_n('with %d image.', 'with %d images.', imageCount, 'chat-to-blog'),
+							imageCount
+						);
 					}
-
-					var editPanels = $('.ctb-column-right').data('editPanels') || [];
-					editPanels = editPanels.filter(function(p) { return p.postId !== currentPostId; });
-					editPanels.unshift({
-						postId: currentPostId,
-						title: postTitle,
-						editUrl: response.data.edit_url,
-						viewUrl: response.data.view_url
-					});
-					$('.ctb-column-right').data('editPanels', editPanels);
-
-					var statusText;
-					var newImageCount = newMedia.length;
-					if (wasNew) {
-						statusText = status === 'publish' ? __('Published', 'chat-to-blog') : __('Saved as draft', 'chat-to-blog');
-						if (newImageCount > 0) {
-							statusText += ' ' + sprintf(
-								/* translators: %d: number of images */
-								_n('with %d image.', 'with %d images.', newImageCount, 'chat-to-blog'),
-								newImageCount
-							);
-						}
-					} else {
-						statusText = status === 'publish' ? __('Updated', 'chat-to-blog') : __('Converted to draft', 'chat-to-blog');
-						if (newImageCount > 0) {
-							statusText += ', ' + sprintf(
-								/* translators: %d: number of images */
-								_n('added %d image.', 'added %d images.', newImageCount, 'chat-to-blog'),
-								newImageCount
-							);
-						} else {
-							statusText += '.';
-						}
-					}
-
-					$('#ctb-post-status').html(
-						'<div class="ctb-status ctb-status-success">' +
-						statusText + ' ' +
-						'<a href="' + response.data.edit_url + '" target="_blank">' + __('Edit', 'chat-to-blog') + '</a> · ' +
-						'<a href="' + response.data.view_url + '" target="_blank">' + __('View', 'chat-to-blog') + '</a>' +
-						'</div>'
-					);
 
 					if (response.data.images) {
 						response.data.images.forEach(function(img) {
-							var exists = postImages.some(function(p) { return p.mxcUrl === img.mxcUrl; });
-							if (!exists) {
-								postImages.push(img);
-							}
 							importedUrls.add(img.mxcUrl);
 							$('.ctb-media-item').each(function() {
 								if ($(this).data('media').mxcUrl === img.mxcUrl) {
@@ -678,7 +592,26 @@
 						});
 					}
 
-					updateButtonState();
+					var editPanels = $('.ctb-column-right').data('editPanels') || [];
+					editPanels.unshift({
+						postId: response.data.post_id,
+						title: postTitle,
+						editUrl: response.data.edit_url,
+						viewUrl: response.data.view_url
+					});
+					$('.ctb-column-right').data('editPanels', editPanels);
+
+					resetPostPanel();
+					restoreFormatPreference();
+					renderCollapsedEditPanels(editPanels);
+
+					$('#ctb-post-status').html(
+						'<div class="ctb-status ctb-status-success">' +
+						statusText + ' ' +
+						'<a href="' + response.data.edit_url + '" target="_blank">' + __('Edit', 'chat-to-blog') + '</a> · ' +
+						'<a href="' + response.data.view_url + '" target="_blank">' + __('View', 'chat-to-blog') + '</a>' +
+						'</div>'
+					);
 				} else {
 					throw new Error(response.data);
 				}

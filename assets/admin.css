@@ -225,6 +225,15 @@
 	width: 100%;
 	height: 100%;
 	object-fit: cover;
+	background: #f0f0f0;
+}
+
+.ctb-media-item img.ctb-loading {
+	background: #e0e0e0;
+}
+
+.ctb-media-item img.ctb-error {
+	background: #f5e6e6;
 }
 
 .ctb-media-item .ctb-check {
@@ -693,22 +702,8 @@
 }
 
 /* Collapsed panels */
-.ctb-new-post-collapsed,
 .ctb-edit-panel-collapsed {
 	margin-bottom: 10px;
-}
-
-.ctb-panel-header-clickable {
-	cursor: pointer;
-	transition: background 0.15s;
-}
-
-.ctb-panel-header-clickable:hover {
-	background: #eee;
-}
-
-.ctb-new-post-collapsed .ctb-panel-header h3 {
-	color: #2271b1;
 }
 
 .ctb-edit-panel-collapsed .ctb-panel-header {

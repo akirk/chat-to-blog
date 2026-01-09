@@ -79,8 +79,8 @@ class BeeperClient {
 		return this.request('/chats/' + encodeURIComponent(chatId));
 	}
 
-	async getChatMessages(chatId, limit = 50, cursor = null, direction = 'before') {
-		const params = { limit: limit };
+	async getChatMessages(chatId, cursor = null, direction = 'before') {
+		const params = {};
 		if (cursor) {
 			params.cursor = cursor;
 			params.direction = direction;
@@ -89,41 +89,61 @@ class BeeperClient {
 		return this.request('/chats/' + encodeURIComponent(chatId) + '/messages', { params: params });
 	}
 
-	async getMediaMessages(chatId, limit = 50, cursor = null) {
-		const result = await this.getChatMessages(chatId, limit, cursor, 'before');
-
-		if (!result.success) {
-			return result;
-		}
-
+	async getMediaMessages(chatId, cursor = null) {
 		const mediaItems = [];
-		const items = result.data.items || [];
+		let currentCursor = cursor;
+		let hasMore = true;
+		let batchCount = 0;
+		const maxBatches = 5;
 
-		for (const msg of items) {
-			for (const att of (msg.attachments || [])) {
-				if (att.type === 'img' || att.type === 'video') {
-					mediaItems.push({
-						id: att.id,
-						mxcUrl: att.id,
-						timestamp: msg.timestamp,
-						text: msg.text || '',
-						sender: msg.senderName || (msg.isSender ? 'You' : 'Unknown'),
-						mimeType: att.mimeType,
-						fileName: att.fileName,
-						sortKey: msg.sortKey
-					});
+		while (hasMore && batchCount < maxBatches) {
+			batchCount++;
+			const result = await this.getChatMessages(chatId, currentCursor, 'before');
+
+			console.log('[CTB Debug] Batch', batchCount, '- cursor:', currentCursor, 'result:', result);
+
+			if (!result.success) {
+				return result;
+			}
+
+			const items = result.data.items || [];
+			console.log('[CTB Debug] Got', items.length, 'messages');
+
+			for (const msg of items) {
+				for (const att of (msg.attachments || [])) {
+					console.log('[CTB Debug] Attachment:', att.type, att.id);
+					if (att.type === 'img' || att.type === 'video') {
+						mediaItems.push({
+							id: att.id,
+							mxcUrl: att.id,
+							timestamp: msg.timestamp,
+							text: msg.text || '',
+							sender: msg.senderName || (msg.isSender ? 'You' : 'Unknown'),
+							mimeType: att.mimeType,
+							fileName: att.fileName,
+							sortKey: msg.sortKey
+						});
+					}
 				}
 			}
-		}
 
-		const lastItem = items[items.length - 1];
+			const lastItem = items[items.length - 1];
+			currentCursor = lastItem ? lastItem.sortKey : null;
+			hasMore = result.data.hasMore || false;
+
+			console.log('[CTB Debug] Found', mediaItems.length, 'media so far, hasMore:', hasMore);
+
+			if (mediaItems.length > 0) {
+				break;
+			}
+		}
 
 		return {
 			success: true,
 			data: {
 				items: mediaItems,
-				hasMore: result.data.hasMore || false,
-				nextCursor: lastItem ? lastItem.sortKey : null
+				hasMore: hasMore,
+				nextCursor: currentCursor
 			}
 		};
 	}
