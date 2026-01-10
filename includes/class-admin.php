@@ -513,11 +513,18 @@ class Admin {
 			wp_update_post( $post_args );
 		} else {
 			// Creating new post
+			$text_block = '';
+			if ( $content ) {
+				$text_block = sprintf(
+					"<!-- wp:paragraph -->\n<p>%s</p>\n<!-- /wp:paragraph -->\n\n",
+					esc_html( $content )
+				);
+			}
+
 			if ( $format === 'gallery' ) {
-				$post_content = $this->build_mixed_gallery_content( $attachment_ids );
-				$post_content .= $content ? "\n\n" . $content : '';
+				$post_content = $text_block . $this->build_mixed_gallery_content( $attachment_ids );
 			} else {
-				$post_content = $new_image_blocks . ( $content ? "\n\n" . $content : '' );
+				$post_content = $text_block . $new_image_blocks;
 			}
 
 			$post_args = [
