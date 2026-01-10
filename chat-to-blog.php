@@ -3,7 +3,7 @@
  * Plugin Name: Chat to Blog
  * Description: Import media from Beeper chats and create blog posts
  * Version: 1.0.0
- * Author: Alex
+ * Author: Alex Kirk
  * License: GPL v2 or later
  * Text Domain: chat-to-blog
  */
