@@ -114,8 +114,13 @@ class BeeperClient {
 
 			for (const msg of items) {
 				const attachments = msg.attachments || [];
-				if (attachments.length === 0 && msg.text) {
-					skippedTypes['text'] = (skippedTypes['text'] || 0) + 1;
+				if (attachments.length === 0) {
+					if (msg.text) {
+						skippedTypes['text'] = (skippedTypes['text'] || 0) + 1;
+					} else {
+						skippedTypes['empty'] = (skippedTypes['empty'] || 0) + 1;
+					}
+					continue;
 				}
 				for (const att of attachments) {
 					console.log('[CTB Debug] Attachment:', att.type, att.id);

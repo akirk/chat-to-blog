@@ -320,22 +320,24 @@
 		if (stats.totalMessages === 0) return;
 
 		var textCount = stats.skippedTypes['text'] || 0;
+		var emptyCount = stats.skippedTypes['empty'] || 0;
 		var unavailableCount = stats.skippedTypes['media unavailable'] || 0;
 		var otherCount = 0;
 		for (var type in stats.skippedTypes) {
-			if (type !== 'text' && type !== 'media unavailable') {
+			if (type !== 'text' && type !== 'empty' && type !== 'media unavailable') {
 				otherCount += stats.skippedTypes[type];
 			}
 		}
 
 		var mediaCount = stats.mediaRendered;
-		var total = mediaCount + textCount + unavailableCount + otherCount;
+		var total = mediaCount + textCount + emptyCount + unavailableCount + otherCount;
 
 		if (total === 0) return;
 
 		var segments = [
 			{ count: mediaCount, cls: 'ctb-bar-media', label: __('media', 'chat-to-blog'), color: '#2271b1' },
 			{ count: textCount, cls: 'ctb-bar-text', label: __('text', 'chat-to-blog'), color: '#b0b0b0' },
+			{ count: emptyCount, cls: 'ctb-bar-empty', label: __('empty', 'chat-to-blog'), color: '#ddd' },
 			{ count: unavailableCount, cls: 'ctb-bar-unavailable', label: __('unavailable', 'chat-to-blog'), color: '#d63638' },
 			{ count: otherCount, cls: 'ctb-bar-other', label: __('other', 'chat-to-blog'), color: '#dba617' }
 		];
