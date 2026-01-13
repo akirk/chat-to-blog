@@ -13,7 +13,7 @@
 	var currentCursor = null;
 	var imageCache = {};
 	var importedUrls = new Set(config.importedUrls || []);
-	var cumulativeStats = { totalMessages: 0, skippedTypes: {} };
+	var cumulativeStats = { totalMessages: 0, mediaRendered: 0, skippedTypes: {} };
 
 	// WordPress AJAX helper
 	function wpAjax(action, data) {
@@ -269,7 +269,7 @@
 		if (!append) {
 			$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Loading media...', 'chat-to-blog') + '</div>');
 			$stats.empty();
-			cumulativeStats = { totalMessages: 0, skippedTypes: {} };
+			cumulativeStats = { totalMessages: 0, mediaRendered: 0, skippedTypes: {} };
 		}
 		$spinner.addClass('is-active');
 
@@ -300,6 +300,7 @@
 						cumulativeStats.skippedTypes[type] = (cumulativeStats.skippedTypes[type] || 0) + result.data.stats.skippedTypes[type];
 					}
 				}
+				cumulativeStats.mediaRendered += renderStats.mediaRendered;
 				if (renderStats.skippedFileUrls > 0) {
 					cumulativeStats.skippedTypes['media unavailable'] = (cumulativeStats.skippedTypes['media unavailable'] || 0) + renderStats.skippedFileUrls;
 				}
@@ -327,8 +328,10 @@
 			}
 		}
 
-		var mediaCount = stats.totalMessages - textCount - unavailableCount - otherCount;
-		var total = stats.totalMessages;
+		var mediaCount = stats.mediaRendered;
+		var total = mediaCount + textCount + unavailableCount + otherCount;
+
+		if (total === 0) return;
 
 		var segments = [
 			{ count: mediaCount, cls: 'ctb-bar-media', label: __('media', 'chat-to-blog'), color: '#2271b1' },
@@ -355,7 +358,7 @@
 	function renderMedia(items, $container) {
 		$container.find('.ctb-empty').remove();
 
-		var stats = { skippedFileUrls: 0 };
+		var stats = { skippedFileUrls: 0, mediaRendered: 0 };
 
 		if (items.length === 0 && $container.children().length === 0) {
 			$container.html('<p class="ctb-empty">' + __('No media found in this chat', 'chat-to-blog') + '</p>');
@@ -371,6 +374,8 @@
 				stats.skippedFileUrls++;
 				return;
 			}
+
+			stats.mediaRendered++;
 
 			var isVideo = item.type === 'video' || (item.mimeType && item.mimeType.indexOf('video/') === 0);
 			var $item = $('<div class="ctb-media-item">').data('media', item);
