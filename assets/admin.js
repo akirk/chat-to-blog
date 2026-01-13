@@ -263,9 +263,11 @@
 		var $grid = $('#ctb-media-grid');
 		var $loadMore = $('#ctb-load-more-wrap');
 		var $spinner = $loadMore.find('.spinner');
+		var $stats = $('#ctb-load-stats');
 
 		if (!append) {
 			$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Loading media...', 'chat-to-blog') + '</div>');
+			$stats.empty();
 		}
 		$spinner.addClass('is-active');
 
@@ -289,10 +291,38 @@
 				renderMedia(result.data.items, $grid);
 				currentCursor = result.data.nextCursor;
 				$loadMore.toggle(result.data.hasMore);
+
+				if (result.data.stats) {
+					renderLoadStats(result.data.stats, $stats);
+				}
 			})
 			.finally(function() {
 				$spinner.removeClass('is-active');
 			});
+	}
+
+	function renderLoadStats(stats, $container) {
+		var parts = [];
+		parts.push(sprintf(
+			/* translators: %d: number of messages */
+			_n('%d message scanned', '%d messages scanned', stats.totalMessages, 'chat-to-blog'),
+			stats.totalMessages
+		));
+
+		var skippedParts = [];
+		for (var type in stats.skippedTypes) {
+			skippedParts.push(stats.skippedTypes[type] + ' ' + type);
+		}
+
+		if (skippedParts.length > 0) {
+			parts.push(sprintf(
+				/* translators: %s: list of skipped types */
+				__('skipped: %s', 'chat-to-blog'),
+				skippedParts.join(', ')
+			));
+		}
+
+		$container.text(parts.join(' · '));
 	}
 
 	function renderMedia(items, $container) {

@@ -95,6 +95,8 @@ class BeeperClient {
 		let hasMore = true;
 		let batchCount = 0;
 		const maxBatches = 5;
+		let totalMessages = 0;
+		const skippedTypes = {};
 
 		while (hasMore && batchCount < maxBatches) {
 			batchCount++;
@@ -107,10 +109,15 @@ class BeeperClient {
 			}
 
 			const items = result.data.items || [];
+			totalMessages += items.length;
 			console.log('[CTB Debug] Got', items.length, 'messages');
 
 			for (const msg of items) {
-				for (const att of (msg.attachments || [])) {
+				const attachments = msg.attachments || [];
+				if (attachments.length === 0 && msg.text) {
+					skippedTypes['text'] = (skippedTypes['text'] || 0) + 1;
+				}
+				for (const att of attachments) {
 					console.log('[CTB Debug] Attachment:', att.type, att.id);
 					if (att.type === 'img' || att.type === 'video') {
 						mediaItems.push({
@@ -123,6 +130,8 @@ class BeeperClient {
 							fileName: att.fileName,
 							sortKey: msg.sortKey
 						});
+					} else {
+						skippedTypes[att.type] = (skippedTypes[att.type] || 0) + 1;
 					}
 				}
 			}
@@ -143,7 +152,12 @@ class BeeperClient {
 			data: {
 				items: mediaItems,
 				hasMore: hasMore,
-				nextCursor: currentCursor
+				nextCursor: currentCursor,
+				stats: {
+					totalMessages: totalMessages,
+					mediaCount: mediaItems.length,
+					skippedTypes: skippedTypes
+				}
 			}
 		};
 	}

@@ -335,11 +335,21 @@
 #ctb-load-more-wrap {
 	text-align: center;
 	margin: 20px 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	flex-wrap: wrap;
 }
 
 #ctb-load-more-wrap .spinner {
 	float: none;
-	margin: 0 10px;
+	margin: 0;
+}
+
+.ctb-load-stats {
+	color: #666;
+	font-size: 12px;
 }
 
 /* Modal */
