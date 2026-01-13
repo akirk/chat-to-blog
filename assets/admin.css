@@ -365,6 +365,10 @@
 	background: #b0b0b0;
 }
 
+.ctb-bar-empty {
+	background: #ddd;
+}
+
 .ctb-bar-unavailable {
 	background: #d63638;
 }
