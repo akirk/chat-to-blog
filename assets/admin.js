@@ -13,6 +13,7 @@
 	var currentCursor = null;
 	var imageCache = {};
 	var importedUrls = new Set(config.importedUrls || []);
+	var cumulativeStats = { totalMessages: 0, skippedTypes: {} };
 
 	// WordPress AJAX helper
 	function wpAjax(action, data) {
@@ -268,6 +269,7 @@
 		if (!append) {
 			$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Loading media...', 'chat-to-blog') + '</div>');
 			$stats.empty();
+			cumulativeStats = { totalMessages: 0, skippedTypes: {} };
 		}
 		$spinner.addClass('is-active');
 
@@ -288,13 +290,21 @@
 					$grid.empty();
 				}
 
-				renderMedia(result.data.items, $grid);
+				var renderStats = renderMedia(result.data.items, $grid);
 				currentCursor = result.data.nextCursor;
 				$loadMore.toggle(result.data.hasMore);
 
 				if (result.data.stats) {
-					renderLoadStats(result.data.stats, $stats);
+					cumulativeStats.totalMessages += result.data.stats.totalMessages;
+					for (var type in result.data.stats.skippedTypes) {
+						cumulativeStats.skippedTypes[type] = (cumulativeStats.skippedTypes[type] || 0) + result.data.stats.skippedTypes[type];
+					}
 				}
+				if (renderStats.skippedFileUrls > 0) {
+					cumulativeStats.skippedTypes['media unavailable'] = (cumulativeStats.skippedTypes['media unavailable'] || 0) + renderStats.skippedFileUrls;
+				}
+
+				renderLoadStats(cumulativeStats, $stats);
 			})
 			.finally(function() {
 				$spinner.removeClass('is-active');
@@ -302,40 +312,63 @@
 	}
 
 	function renderLoadStats(stats, $container) {
-		var parts = [];
-		parts.push(sprintf(
-			/* translators: %d: number of messages */
-			_n('%d message scanned', '%d messages scanned', stats.totalMessages, 'chat-to-blog'),
-			stats.totalMessages
-		));
+		var $bar = $('#ctb-load-stats-bar');
+		$container.empty();
+		$bar.empty();
 
-		var skippedParts = [];
+		if (stats.totalMessages === 0) return;
+
+		var textCount = stats.skippedTypes['text'] || 0;
+		var unavailableCount = stats.skippedTypes['media unavailable'] || 0;
+		var otherCount = 0;
 		for (var type in stats.skippedTypes) {
-			skippedParts.push(stats.skippedTypes[type] + ' ' + type);
+			if (type !== 'text' && type !== 'media unavailable') {
+				otherCount += stats.skippedTypes[type];
+			}
 		}
 
-		if (skippedParts.length > 0) {
-			parts.push(sprintf(
-				/* translators: %s: list of skipped types */
-				__('skipped: %s', 'chat-to-blog'),
-				skippedParts.join(', ')
-			));
-		}
+		var mediaCount = stats.totalMessages - textCount - unavailableCount - otherCount;
+		var total = stats.totalMessages;
 
-		$container.text(parts.join(' · '));
+		var segments = [
+			{ count: mediaCount, cls: 'ctb-bar-media', label: __('media', 'chat-to-blog'), color: '#2271b1' },
+			{ count: textCount, cls: 'ctb-bar-text', label: __('text', 'chat-to-blog'), color: '#b0b0b0' },
+			{ count: unavailableCount, cls: 'ctb-bar-unavailable', label: __('unavailable', 'chat-to-blog'), color: '#d63638' },
+			{ count: otherCount, cls: 'ctb-bar-other', label: __('other', 'chat-to-blog'), color: '#dba617' }
+		];
+
+		segments.forEach(function(seg) {
+			if (seg.count > 0) {
+				var pct = (seg.count / total * 100).toFixed(1);
+				$bar.append($('<span>').addClass(seg.cls).css('width', pct + '%'));
+
+				$container.append(
+					$('<span class="ctb-stat-item">').append(
+						$('<span class="ctb-stat-dot">').css('background', seg.color),
+						$('<span>').text(seg.count + ' ' + seg.label)
+					)
+				);
+			}
+		});
 	}
 
 	function renderMedia(items, $container) {
 		$container.find('.ctb-empty').remove();
 
+		var stats = { skippedFileUrls: 0 };
+
 		if (items.length === 0 && $container.children().length === 0) {
 			$container.html('<p class="ctb-empty">' + __('No media found in this chat', 'chat-to-blog') + '</p>');
-			return;
+			return stats;
 		}
 
 		items.forEach(function(item) {
 			var mxcUrl = item.mxcUrl;
-			if (!mxcUrl || (mxcUrl.indexOf('localmxc://') !== 0 && mxcUrl.indexOf('mxc://') !== 0)) {
+			if (!mxcUrl) {
+				return;
+			}
+			if (mxcUrl.indexOf('localmxc://') !== 0 && mxcUrl.indexOf('mxc://') !== 0) {
+				stats.skippedFileUrls++;
 				return;
 			}
 
@@ -372,6 +405,8 @@
 
 			$container.append($item);
 		});
+
+		return stats;
 	}
 
 	// Click on media item to add to selection

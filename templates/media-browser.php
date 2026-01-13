@@ -51,9 +51,16 @@ $categories = get_categories( [ 'hide_empty' => false ] );
 					</div>
 
 					<div id="ctb-load-more-wrap" class="ctb-load-more-wrap" style="display:none;">
-						<button type="button" id="ctb-load-more" class="button"><?php esc_html_e( 'Load More', 'chat-to-blog' ); ?></button>
-						<span class="spinner"></span>
-						<span id="ctb-load-stats" class="ctb-load-stats"></span>
+						<div class="ctb-load-stats-bar-wrap">
+							<div id="ctb-load-stats-bar" class="ctb-load-stats-bar"></div>
+						</div>
+						<div class="ctb-load-stats-row">
+							<span id="ctb-load-stats" class="ctb-load-stats"></span>
+							<span class="ctb-load-more-right">
+								<span class="spinner"></span>
+								<button type="button" id="ctb-load-more" class="button"><?php esc_html_e( 'Load More', 'chat-to-blog' ); ?></button>
+							</span>
+						</div>
 					</div>
 				</div>
 			</div>
