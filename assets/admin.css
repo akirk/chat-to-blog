@@ -340,21 +340,37 @@
 }
 
 .ctb-load-stats-bar-wrap {
-	height: 8px;
-	background: #e0e0e0;
-	border-radius: 4px;
+	height: 14px;
+	background: #fff;
+	border-radius: 7px;
 	overflow: hidden;
 	margin-bottom: 10px;
+	border: 1px solid #ccc;
+	padding: 2px;
 }
 
 .ctb-load-stats-bar {
 	display: flex;
 	height: 100%;
+	border-radius: 5px;
+	overflow: hidden;
 }
 
 .ctb-load-stats-bar span {
 	height: 100%;
 	transition: width 0.3s ease;
+}
+
+.ctb-load-stats-bar span:first-child {
+	border-radius: 4px 0 0 4px;
+}
+
+.ctb-load-stats-bar span:last-child {
+	border-radius: 0 4px 4px 0;
+}
+
+.ctb-load-stats-bar span:only-child {
+	border-radius: 4px;
 }
 
 .ctb-bar-media {
