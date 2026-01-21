@@ -40,8 +40,8 @@ Chat to Blog connects to the Beeper Desktop local API to browse images and video
 
 1. Open **Beeper Desktop** on your computer
 2. Go to **Settings** (gear icon)
-3. Click **Developer** in the sidebar
-4. Click **Create API Token** and copy the token
+3. Click **Developers** in the sidebar
+4. Scroll to **Approved connections** and click the **+** button
 5. Paste the token in the Chat to Blog settings page
 
 ### Local Media Server

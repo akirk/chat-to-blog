@@ -45,8 +45,8 @@ $local_server_url = get_option( 'chat_to_blog_local_server', 'http://localhost:8
 			<ol>
 				<li><?php echo wp_kses( __( 'Make sure <strong>Beeper Desktop</strong> is running on this computer', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
 				<li><?php echo wp_kses( __( 'Open Beeper Desktop and go to <strong>Settings</strong> (gear icon)', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
-				<li><?php echo wp_kses( __( 'Click <strong>Developer</strong> in the sidebar', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
-				<li><?php echo wp_kses( __( 'Click <strong>Create API Token</strong> and copy the token', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
+				<li><?php echo wp_kses( __( 'Click <strong>Developers</strong> in the sidebar', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
+				<li><?php echo wp_kses( __( 'Scroll to <strong>Approved connections</strong> and click the <strong>+</strong> button', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
 			</ol>
 		</div>
 
