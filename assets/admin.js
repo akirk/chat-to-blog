@@ -386,6 +386,7 @@
 
 			var $img = $('<img>').attr('alt', '');
 			$item.append($img);
+			$item.append('<button type="button" class="ctb-preview-btn" title="' + __('Preview', 'chat-to-blog') + '">&#9974;</button>');
 
 			if (isVideo) {
 				$item.append('<div class="ctb-video-badge">VIDEO</div>');
@@ -475,7 +476,7 @@
 
 		selectedMedia.forEach(function(item) {
 			var isVideo = item.type === 'video' || (item.mimeType && item.mimeType.indexOf('video/') === 0);
-			var $thumb = $('<div class="ctb-selected-thumb">');
+			var $thumb = $('<div class="ctb-selected-thumb">').data('media', item);
 
 			if (isVideo) {
 				$thumb.addClass('ctb-selected-video');
@@ -585,6 +586,197 @@
 
 	$('#ctb-save-draft').on('click', function() { createPost('draft'); });
 	$('#ctb-publish').on('click', function() { createPost('publish'); });
+
+	// Lightbox functionality
+	var $lightbox = null;
+	var lightboxItems = [];
+	var lightboxIndex = 0;
+
+	function createLightbox() {
+		if ($lightbox) return;
+
+		$lightbox = $('<div class="ctb-lightbox">' +
+			'<button class="ctb-lightbox-close" type="button">&times;</button>' +
+			'<button class="ctb-lightbox-nav ctb-lightbox-prev" type="button">&#8249;</button>' +
+			'<div class="ctb-lightbox-content"></div>' +
+			'<button class="ctb-lightbox-nav ctb-lightbox-next" type="button">&#8250;</button>' +
+			'<div class="ctb-lightbox-info"></div>' +
+			'<div class="ctb-lightbox-hint">' + __('Click to select · Arrow keys to navigate · Esc to close', 'chat-to-blog') + '</div>' +
+			'</div>');
+
+		$('body').append($lightbox);
+
+		$lightbox.on('click', function(e) {
+			if ($(e.target).hasClass('ctb-lightbox')) {
+				closeLightbox();
+			}
+		});
+
+		$lightbox.find('.ctb-lightbox-close').on('click', closeLightbox);
+		$lightbox.find('.ctb-lightbox-prev').on('click', function() { navigateLightbox(-1); });
+		$lightbox.find('.ctb-lightbox-next').on('click', function() { navigateLightbox(1); });
+
+		$lightbox.find('.ctb-lightbox-content').on('click', function() {
+			if (lightboxItems[lightboxIndex]) {
+				var media = lightboxItems[lightboxIndex];
+				var $mediaItem = $('.ctb-media-item').filter(function() {
+					return $(this).data('media').id === media.id;
+				});
+				if ($mediaItem.length) {
+					$mediaItem.trigger('click');
+					updateLightboxInfo();
+				}
+			}
+		});
+	}
+
+	function openLightbox(mediaItem) {
+		createLightbox();
+
+		lightboxItems = [];
+		$('.ctb-media-item').each(function() {
+			lightboxItems.push($(this).data('media'));
+		});
+
+		lightboxIndex = lightboxItems.findIndex(function(item) {
+			return item.id === mediaItem.id;
+		});
+
+		if (lightboxIndex === -1) lightboxIndex = 0;
+
+		showLightboxMedia();
+		$lightbox.addClass('active');
+		$(document).on('keydown.lightbox', handleLightboxKeydown);
+	}
+
+	function closeLightbox() {
+		if (!$lightbox) return;
+		$lightbox.removeClass('active');
+		$lightbox.find('.ctb-lightbox-content').empty();
+		$(document).off('keydown.lightbox');
+	}
+
+	function navigateLightbox(direction) {
+		var newIndex = lightboxIndex + direction;
+		if (newIndex >= 0 && newIndex < lightboxItems.length) {
+			lightboxIndex = newIndex;
+			showLightboxMedia();
+		}
+	}
+
+	function showLightboxMedia() {
+		if (!lightboxItems[lightboxIndex]) return;
+
+		var item = lightboxItems[lightboxIndex];
+		var $content = $lightbox.find('.ctb-lightbox-content');
+		$content.empty();
+
+		var isVideo = item.type === 'video' || (item.mimeType && item.mimeType.indexOf('video/') === 0);
+
+		if (isVideo) {
+			var $video = $('<video controls autoplay>');
+			$content.append($video);
+
+			fetchImageAsDataUrl(item.mxcUrl).then(function(dataUrl) {
+				$video.attr('src', dataUrl);
+			});
+		} else {
+			var $img = $('<img>').attr('alt', '');
+			$content.append($img);
+
+			var mxcUrl = item.mxcUrl;
+			if (imageCache[mxcUrl]) {
+				$img.attr('src', imageCache[mxcUrl]);
+			} else {
+				$img.attr('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+				fetchImageAsDataUrl(mxcUrl).then(function(dataUrl) {
+					$img.attr('src', dataUrl);
+				});
+			}
+		}
+
+		$lightbox.find('.ctb-lightbox-prev').prop('disabled', lightboxIndex === 0);
+		$lightbox.find('.ctb-lightbox-next').prop('disabled', lightboxIndex === lightboxItems.length - 1);
+
+		updateLightboxInfo();
+	}
+
+	function updateLightboxInfo() {
+		var item = lightboxItems[lightboxIndex];
+		var info = (lightboxIndex + 1) + ' / ' + lightboxItems.length;
+
+		var isSelected = selectedMedia.some(function(m) { return m.id === item.id; });
+		if (isSelected) {
+			info += ' · ' + __('Selected', 'chat-to-blog');
+		}
+
+		if (item.timestamp) {
+			var date = new Date(item.timestamp);
+			info += ' · ' + date.toLocaleDateString();
+		}
+
+		$lightbox.find('.ctb-lightbox-info').text(info);
+	}
+
+	function handleLightboxKeydown(e) {
+		if (e.key === 'Escape') {
+			closeLightbox();
+		} else if (e.key === 'ArrowLeft') {
+			navigateLightbox(-1);
+		} else if (e.key === 'ArrowRight') {
+			navigateLightbox(1);
+		} else if (e.key === ' ' || e.key === 'Enter') {
+			e.preventDefault();
+			if (lightboxItems[lightboxIndex]) {
+				var media = lightboxItems[lightboxIndex];
+				var $mediaItem = $('.ctb-media-item').filter(function() {
+					return $(this).data('media').id === media.id;
+				});
+				if ($mediaItem.length) {
+					$mediaItem.trigger('click');
+					updateLightboxInfo();
+				}
+			}
+		}
+	}
+
+	$(document).on('dblclick', '.ctb-media-item', function(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		var media = $(this).data('media');
+		openLightbox(media);
+	});
+
+	$(document).on('click', '.ctb-preview-btn', function(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		var media = $(this).closest('.ctb-media-item').data('media');
+		openLightbox(media);
+	});
+
+	$(document).on('dblclick', '.ctb-selected-thumb', function(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		var media = $(this).data('media');
+		if (media) {
+			openLightboxForSelected(media);
+		}
+	});
+
+	function openLightboxForSelected(mediaItem) {
+		createLightbox();
+
+		lightboxItems = selectedMedia.slice();
+		lightboxIndex = lightboxItems.findIndex(function(item) {
+			return item.id === mediaItem.id;
+		});
+
+		if (lightboxIndex === -1) lightboxIndex = 0;
+
+		showLightboxMedia();
+		$lightbox.addClass('active');
+		$(document).on('keydown.lightbox', handleLightboxKeydown);
+	}
 
 	function renderCollapsedEditPanels(panels) {
 		$('.ctb-edit-panel-collapsed').remove();
