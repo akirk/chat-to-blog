@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create plugin zip
+        run: |
+          mkdir -p build
+          rsync -av --exclude='build' --exclude='.git' --exclude='.github' --exclude='IDEAS.md' . build/chat-to-blog/
+          cd build && zip -r chat-to-blog.zip chat-to-blog
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/chat-to-blog.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
