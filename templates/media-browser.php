@@ -19,10 +19,6 @@ $categories = get_categories( [ 'hide_empty' => false ] );
 			<?php esc_html_e( 'Chat to Blog', 'chat-to-blog' ); ?>
 			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Settings', 'chat-to-blog' ); ?></a>
 		</h1>
-		<div id="ctb-local-server-status" class="ctb-server-status-badge ctb-status-checking">
-			<span class="ctb-server-status-icon"></span>
-			<span class="ctb-server-status-text"><?php esc_html_e( 'Checking...', 'chat-to-blog' ); ?></span>
-		</div>
 	</div>
 
 	<?php if ( ! $is_configured ) : ?>

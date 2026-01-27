@@ -44,19 +44,6 @@ Chat to Blog connects to the Beeper Desktop local API to browse images and video
 4. Scroll to **Approved connections** and click the **+** button
 5. Paste the token in the Chat to Blog settings page
 
-### Local Media Server
-
-A local PHP server is required to serve media files from Beeper's cache. This is needed because the Beeper API returns file paths rather than binary data for cached media.
-
-To start the server:
-
-```bash
-cd /path/to/wp-content/plugins/chat-to-blog
-php -S localhost:8787 local-media-server.php
-```
-
-Keep this terminal open while using Chat to Blog. The default URL is `http://localhost:8787` but can be changed in settings.
-
 ## Usage
 
 1. Go to **Posts > Chat to Blog** in the WordPress admin
@@ -73,7 +60,6 @@ Keep this terminal open while using Chat to Blog. The default URL is `http://loc
 - Videos are marked with a play icon and "VIDEO" badge
 - When using Gallery format with mixed media, images are grouped in the gallery and videos are added below as individual blocks
 - Click "Load More" to fetch older messages from a chat
-- The local server status indicator shows if media serving is working
 - Set a custom date to backdate posts
 
 ## How It Works
@@ -103,7 +89,6 @@ wp i18n make-json languages/chat-to-blog-{locale}.po --no-purge
 ```
 chat-to-blog/
 ├── chat-to-blog.php          # Main plugin file
-├── local-media-server.php    # Standalone PHP server for media
 ├── includes/
 │   ├── class-admin.php       # Admin pages and AJAX handlers
 │   ├── class-beeper-api.php  # Beeper Desktop API client

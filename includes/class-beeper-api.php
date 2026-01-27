@@ -200,7 +200,7 @@ class BeeperAPI {
 	/**
 	 * Download media from a URL.
 	 *
-	 * For mxc:// URLs, uses the /assets/download endpoint.
+	 * For mxc:// URLs, uses the /assets/serve endpoint.
 	 * For file:// URLs (local paths from Beeper), reads directly.
 	 * For http(s):// URLs, fetches with auth header.
 	 */
@@ -213,7 +213,7 @@ class BeeperAPI {
 			return new \WP_Error( 'no_url', __( 'No media URL provided', 'chat-to-blog' ) );
 		}
 
-		// Handle mxc:// URLs via the assets/download endpoint
+		// Handle mxc:// URLs via the assets/serve endpoint
 		if ( strpos( $media_url, 'mxc://' ) === 0 || strpos( $media_url, 'localmxc://' ) === 0 ) {
 			return $this->download_asset( $media_url );
 		}
@@ -258,16 +258,16 @@ class BeeperAPI {
 	}
 
 	/**
-	 * Download an asset via the Beeper assets/download endpoint.
+	 * Download an asset via the Beeper assets/serve endpoint.
 	 * Used for mxc:// and localmxc:// URLs.
 	 */
 	private function download_asset( $mxc_url ) {
-		$response = wp_remote_post( $this->api_base . '/assets/download', [
+		$url = $this->api_base . '/assets/serve?' . http_build_query( [ 'url' => $mxc_url ] );
+
+		$response = wp_remote_get( $url, [
 			'headers'   => [
 				'Authorization' => 'Bearer ' . $this->token,
-				'Content-Type'  => 'application/json',
 			],
-			'body'      => wp_json_encode( [ 'url' => $mxc_url ] ),
 			'timeout'   => 60,
 			'sslverify' => false,
 		] );
@@ -285,25 +285,9 @@ class BeeperAPI {
 			);
 		}
 
-		$body = wp_remote_retrieve_body( $response );
-		$content_type = wp_remote_retrieve_header( $response, 'content-type' );
-
-		// Check if response is JSON with a local file path
-		if ( strpos( $content_type, 'application/json' ) !== false ) {
-			$data = json_decode( $body, true );
-			if ( ! empty( $data['srcURL'] ) ) {
-				$use_local_server = get_option( 'chat_to_blog_use_local_server', false );
-				if ( $use_local_server ) {
-					return $this->fetch_from_local_server( $mxc_url );
-				}
-				return $this->read_local_file( $data['srcURL'] );
-			}
-		}
-
-		// Otherwise return the binary content directly
 		return [
-			'body'         => $body,
-			'content_type' => $content_type ?: 'image/jpeg',
+			'body'         => wp_remote_retrieve_body( $response ),
+			'content_type' => wp_remote_retrieve_header( $response, 'content-type' ) ?: 'image/jpeg',
 		];
 	}
 
@@ -339,28 +323,4 @@ class BeeperAPI {
 		];
 	}
 
-	/**
-	 * Fetch media from the local media server.
-	 */
-	private function fetch_from_local_server( $mxc_url ) {
-		$local_server = get_option( 'chat_to_blog_local_server', 'http://localhost:8787' );
-		$url = $local_server . '?id=' . urlencode( $mxc_url ) . '&token=' . urlencode( $this->token );
-
-		$response = wp_remote_get( $url, [ 'timeout' => 60 ] );
-
-		if ( is_wp_error( $response ) ) {
-			return $response;
-		}
-
-		$code = wp_remote_retrieve_response_code( $response );
-		if ( $code >= 400 ) {
-			/* translators: %d: HTTP status code */
-			return new \WP_Error( 'local_server_error', sprintf( __( 'Local server returned %d', 'chat-to-blog' ), $code ) );
-		}
-
-		return [
-			'body'         => wp_remote_retrieve_body( $response ),
-			'content_type' => wp_remote_retrieve_header( $response, 'content-type' ) ?: 'application/octet-stream',
-		];
-	}
 }

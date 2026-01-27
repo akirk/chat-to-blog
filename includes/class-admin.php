@@ -20,7 +20,6 @@ class Admin {
 
 		add_action( 'wp_ajax_ctb_test_connection', [ $this, 'ajax_test_connection' ] );
 		add_action( 'wp_ajax_ctb_save_token', [ $this, 'ajax_save_token' ] );
-		add_action( 'wp_ajax_ctb_save_server_settings', [ $this, 'ajax_save_server_settings' ] );
 		add_action( 'wp_ajax_ctb_get_chats', [ $this, 'ajax_get_chats' ] );
 		add_action( 'wp_ajax_ctb_get_media', [ $this, 'ajax_get_media' ] );
 		add_action( 'wp_ajax_ctb_serve_media', [ $this, 'ajax_serve_media' ] );
@@ -86,7 +85,6 @@ class Admin {
 			'ajaxUrl'         => admin_url( 'admin-ajax.php' ),
 			'nonce'           => wp_create_nonce( 'chat_to_blog' ),
 			'beeperToken'     => $this->beeper->get_token(),
-			'mediaServerUrl'  => get_option( 'chat_to_blog_local_server', 'http://localhost:8787' ),
 			'importedUrls'    => array_keys( $this->importer->get_all_imported_urls() ),
 		] );
 
@@ -137,19 +135,6 @@ class Admin {
 		}
 
 		wp_send_json_success( [ 'cleared' => true ] );
-	}
-
-	public function ajax_save_server_settings() {
-		check_ajax_referer( 'chat_to_blog', 'nonce' );
-
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
-		}
-
-		$local_server_url = esc_url_raw( $_POST['local_server_url'] ?? 'http://localhost:8787' );
-		update_option( 'chat_to_blog_local_server', $local_server_url );
-
-		wp_send_json_success( [ 'saved' => true ] );
 	}
 
 	public function ajax_get_chats() {
@@ -206,8 +191,11 @@ class Admin {
 			$url = $item['mxcUrl'] ?? '';
 			$thumbnail_url = $item['posterImg'] ?? $url;
 
-			// Skip items without a valid mxc URL
-			if ( empty( $url ) || strpos( $url, 'localmxc://' ) !== 0 ) {
+			// Skip items without a valid media URL
+			if ( empty( $url ) ) {
+				continue;
+			}
+			if ( strpos( $url, 'localmxc://' ) !== 0 && strpos( $url, 'mxc://' ) !== 0 && strpos( $url, 'file://' ) !== 0 ) {
 				continue;
 			}
 
@@ -251,7 +239,7 @@ class Admin {
 			wp_die( esc_html__( 'No id specified', 'chat-to-blog' ), 400 );
 		}
 
-		if ( strpos( $id, 'localmxc://' ) === 0 || strpos( $id, 'mxc://' ) === 0 ) {
+		if ( strpos( $id, 'localmxc://' ) === 0 || strpos( $id, 'mxc://' ) === 0 || strpos( $id, 'file://' ) === 0 ) {
 			$this->serve_mxc_media( $id );
 			return;
 		}
@@ -259,13 +247,30 @@ class Admin {
 		wp_die( esc_html__( 'Invalid media id', 'chat-to-blog' ), 400 );
 	}
 
-	private function serve_mxc_media( $mxc_url ) {
-		$response = wp_remote_post( 'http://localhost:23373/v1/assets/download', [
+	private function serve_mxc_media( $media_url ) {
+		// Handle file:// URLs by reading directly from disk
+		if ( strpos( $media_url, 'file://' ) === 0 ) {
+			$file_path = urldecode( substr( $media_url, 7 ) );
+			if ( ! file_exists( $file_path ) ) {
+				/* translators: %s: file path */
+				wp_die( esc_html( sprintf( __( 'File not found: %s', 'chat-to-blog' ), $file_path ) ), 404 );
+			}
+
+			$mime_type = mime_content_type( $file_path );
+			header( 'Content-Type: ' . $mime_type );
+			header( 'Content-Length: ' . filesize( $file_path ) );
+			header( 'Cache-Control: public, max-age=86400' );
+			readfile( $file_path );
+			exit;
+		}
+
+		// Handle mxc:// and localmxc:// URLs via Beeper API
+		$url = 'http://localhost:23373/v1/assets/serve?' . http_build_query( [ 'url' => $media_url ] );
+
+		$response = wp_remote_get( $url, [
 			'headers' => [
-				'Content-Type'  => 'application/json',
 				'Authorization' => 'Bearer ' . $this->beeper->get_token(),
 			],
-			'body'    => wp_json_encode( [ 'url' => $mxc_url ] ),
 			'timeout' => 30,
 		] );
 
@@ -278,69 +283,6 @@ class Admin {
 		if ( $code !== 200 ) {
 			/* translators: %d: HTTP error code */
 			wp_die( esc_html( sprintf( __( 'Beeper API error: %d', 'chat-to-blog' ), $code ) ), $code );
-		}
-
-		$body = wp_remote_retrieve_body( $response );
-		$content_type = wp_remote_retrieve_header( $response, 'content-type' );
-
-		if ( strpos( $content_type, 'application/json' ) !== false ) {
-			$data = json_decode( $body, true );
-			if ( ! empty( $data['srcURL'] ) ) {
-				$use_local_server = get_option( 'chat_to_blog_use_local_server', false );
-				if ( $use_local_server ) {
-					$this->proxy_local_file( $mxc_url );
-				} else {
-					$this->serve_local_file( $data['srcURL'] );
-				}
-				return;
-			}
-			wp_die( esc_html__( 'Could not resolve media', 'chat-to-blog' ), 404 );
-		}
-
-		header( 'Content-Type: ' . ( $content_type ?: 'image/jpeg' ) );
-		header( 'Content-Length: ' . strlen( $body ) );
-		header( 'Cache-Control: public, max-age=86400' );
-
-		echo $body;
-		exit;
-	}
-
-	private function serve_local_file( $file_url ) {
-		$file_path = $file_url;
-		if ( strpos( $file_path, 'file://' ) === 0 ) {
-			$file_path = substr( $file_path, 7 );
-		}
-		$file_path = urldecode( $file_path );
-
-		if ( ! file_exists( $file_path ) ) {
-			/* translators: %s: file path */
-			wp_die( esc_html( sprintf( __( 'File not found: %s', 'chat-to-blog' ), $file_path ) ), 404 );
-		}
-
-		$mime_type = mime_content_type( $file_path );
-		header( 'Content-Type: ' . $mime_type );
-		header( 'Content-Length: ' . filesize( $file_path ) );
-		header( 'Cache-Control: public, max-age=86400' );
-		readfile( $file_path );
-		exit;
-	}
-
-	private function proxy_local_file( $mxc_url ) {
-		$local_server = get_option( 'chat_to_blog_local_server', 'http://localhost:8787' );
-		$proxy_url = $local_server . '?id=' . urlencode( $mxc_url ) . '&token=' . urlencode( $this->beeper->get_token() );
-
-		$response = wp_remote_get( $proxy_url, [ 'timeout' => 30 ] );
-
-		if ( is_wp_error( $response ) ) {
-			/* translators: %s: error message */
-			wp_die( esc_html( sprintf( __( 'Local media server error: %s. Is local-media-server.php running?', 'chat-to-blog' ), $response->get_error_message() ) ), 500 );
-		}
-
-		$code = wp_remote_retrieve_response_code( $response );
-		if ( $code !== 200 ) {
-			$body = wp_remote_retrieve_body( $response );
-			/* translators: 1: HTTP status code, 2: error message */
-			wp_die( esc_html( sprintf( __( 'Local media server returned %1$d: %2$s', 'chat-to-blog' ), $code, $body ) ), $code );
 		}
 
 		$body = wp_remote_retrieve_body( $response );

@@ -24,24 +24,24 @@
 		});
 	}
 
-	// Fetch image bytes from local media server and return as data URL
-	function fetchImageAsDataUrl(mxcUrl) {
-		if (imageCache[mxcUrl]) {
-			return Promise.resolve(imageCache[mxcUrl]);
+	// Fetch media via WordPress AJAX and return as data URL
+	function fetchImageAsDataUrl(mediaUrl) {
+		if (imageCache[mediaUrl]) {
+			return Promise.resolve(imageCache[mediaUrl]);
 		}
 
-		var url = config.mediaServerUrl + '?id=' + encodeURIComponent(mxcUrl) + '&token=' + encodeURIComponent(config.beeperToken);
+		var url = config.ajaxUrl + '?action=ctb_serve_media&nonce=' + encodeURIComponent(config.nonce) + '&id=' + encodeURIComponent(mediaUrl);
 
 		return fetch(url)
 			.then(function(response) {
-				if (!response.ok) throw new Error('Media server error: ' + response.status);
+				if (!response.ok) throw new Error('Media fetch error: ' + response.status);
 				return response.blob();
 			})
 			.then(function(blob) {
 				return new Promise(function(resolve) {
 					var reader = new FileReader();
 					reader.onloadend = function() {
-						imageCache[mxcUrl] = reader.result;
+						imageCache[mediaUrl] = reader.result;
 						resolve(reader.result);
 					};
 					reader.readAsDataURL(blob);
@@ -126,56 +126,11 @@
 			});
 	});
 
-	// Server Settings
-	function testLocalServer(serverUrl) {
-		return fetch(serverUrl + '?health', { mode: 'cors' })
-			.then(function(response) {
-				if (!response.ok) throw new Error('Server returned ' + response.status);
-				return response.json();
-			})
-			.then(function(data) { return data.status === 'ok'; })
-			.catch(function() { return false; });
-	}
-
-	$('#ctb-test-local-server').on('click', function() {
-		var serverUrl = $('#ctb-local-server-url').val() || 'http://localhost:8787';
-		showStatus('#ctb-server-status', __('Testing connection...', 'chat-to-blog'), false);
-
-		testLocalServer(serverUrl).then(function(ok) {
-			if (ok) {
-				showStatus('#ctb-server-status', __('Local server is reachable!', 'chat-to-blog'), false);
-			} else {
-				showStatus('#ctb-server-status', __('Cannot reach local server. Is it running?', 'chat-to-blog'), true);
-			}
-		});
-	});
-
-	$('#ctb-server-form').on('submit', function(e) {
-		e.preventDefault();
-		var localServerUrl = $('#ctb-local-server-url').val() || 'http://localhost:8787';
-
-		wpAjax('ctb_save_server_settings', {
-			local_server_url: localServerUrl
-		})
-			.done(function(response) {
-				if (response.success) {
-					config.mediaServerUrl = localServerUrl;
-					showStatus('#ctb-server-status', __('Settings saved.', 'chat-to-blog'), false);
-				} else {
-					showStatus('#ctb-server-status', response.data || __('Error saving settings', 'chat-to-blog'), true);
-				}
-			})
-			.fail(function() {
-				showStatus('#ctb-server-status', __('Request failed', 'chat-to-blog'), true);
-			});
-	});
-
 	// Media Browser
 
 	$(document).ready(function() {
 		if ($('#ctb-chat-list').length) {
 			loadChatList();
-			checkMediaServer();
 			restoreFormatPreference();
 		}
 	});
@@ -190,23 +145,6 @@
 	$(document).on('change', 'input[name="ctb-format"]', function() {
 		localStorage.setItem('ctb-format', $(this).val());
 	});
-
-	function checkMediaServer() {
-		var $serverStatus = $('#ctb-local-server-status');
-		if ($serverStatus.length && config.mediaServerUrl) {
-			testLocalServer(config.mediaServerUrl).then(function(ok) {
-				$serverStatus
-					.removeClass('ctb-status-checking')
-					.addClass(ok ? 'ctb-status-ok' : 'ctb-status-error');
-				$serverStatus.find('.ctb-server-status-text').text(
-					ok ? __('Local server connected', 'chat-to-blog') : __('Local server offline', 'chat-to-blog')
-				);
-				if (!ok) {
-					$serverStatus.attr('title', 'Start with: php -S localhost:8787 local-media-server.php');
-				}
-			});
-		}
-	}
 
 	function loadChatList() {
 		beeper.getAllChats()
@@ -370,7 +308,7 @@
 			if (!mxcUrl) {
 				return;
 			}
-			if (mxcUrl.indexOf('localmxc://') !== 0 && mxcUrl.indexOf('mxc://') !== 0) {
+			if (mxcUrl.indexOf('localmxc://') !== 0 && mxcUrl.indexOf('mxc://') !== 0 && mxcUrl.indexOf('file://') !== 0) {
 				stats.skippedFileUrls++;
 				return;
 			}
