@@ -131,7 +131,15 @@ class Admin {
 				/* translators: %s: error message */
 				wp_send_json_error( sprintf( __( 'Token saved but connection failed: %s', 'chat-to-blog' ), $test->get_error_message() ) );
 			}
-			wp_send_json_success( [ 'connected' => true, 'accounts' => $test['accounts'] ] );
+			$response = [
+				'connected'     => true,
+				'accounts'      => $test['accounts'],
+				'serveEndpoint' => $test['serveEndpoint'] ?? false,
+			];
+			if ( ! empty( $test['warning'] ) ) {
+				$response['warning'] = $test['warning'];
+			}
+			wp_send_json_success( $response );
 		}
 
 		wp_send_json_success( [ 'cleared' => true ] );

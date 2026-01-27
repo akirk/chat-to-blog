@@ -85,12 +85,20 @@
 			.done(function(response) {
 				if (response.success) {
 					if (response.data.connected) {
-						showStatus('#ctb-token-status', sprintf(
+						var message = sprintf(
 							/* translators: %d: number of accounts */
-							__('Connected! Found %d account(s).', 'chat-to-blog'),
+							__('Connected! Found %d accounts.', 'chat-to-blog'),
 							response.data.accounts
-						), false);
+						);
 						config.beeperToken = token;
+
+						if (response.data.warning) {
+							showStatus('#ctb-token-status', message + ' ' + response.data.warning, true);
+						} else if (response.data.serveEndpoint) {
+							showStatus('#ctb-token-status', message + ' ' + __('Media streaming supported.', 'chat-to-blog'), false);
+						} else {
+							showStatus('#ctb-token-status', message, false);
+						}
 					} else {
 						showStatus('#ctb-token-status', __('Token cleared.', 'chat-to-blog'), false);
 					}
@@ -107,12 +115,20 @@
 		wpAjax('ctb_test_connection', {})
 			.done(function(response) {
 				if (response.success) {
-					showStatus('#ctb-token-status', sprintf(
+					var message = sprintf(
 						/* translators: 1: number of accounts, 2: network names */
-						__('Connected! Found %1$d account(s) (%2$s)', 'chat-to-blog'),
+						__('Connected! Found %1$d accounts: %2$s.', 'chat-to-blog'),
 						response.data.accounts,
 						response.data.networks.join(', ')
-					), false);
+					);
+
+					if (response.data.warning) {
+						showStatus('#ctb-token-status', message + ' ' + response.data.warning, true);
+					} else if (response.data.serveEndpoint) {
+						showStatus('#ctb-token-status', message + ' ' + __('Media streaming supported.', 'chat-to-blog'), false);
+					} else {
+						showStatus('#ctb-token-status', message, false);
+					}
 				} else {
 					showStatus('#ctb-token-status', sprintf(
 						/* translators: %s: error message */

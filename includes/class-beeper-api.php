@@ -88,11 +88,43 @@ class BeeperAPI {
 			return $accounts;
 		}
 
-		return [
-			'success'  => true,
-			'accounts' => count( $accounts ),
-			'networks' => array_unique( array_column( $accounts, 'network' ) ),
+		$serve_endpoint = $this->check_serve_endpoint();
+
+		$result = [
+			'success'       => true,
+			'accounts'      => count( $accounts ),
+			'networks'      => array_unique( array_column( $accounts, 'network' ) ),
+			'serveEndpoint' => $serve_endpoint,
 		];
+
+		if ( ! $serve_endpoint ) {
+			$result['warning'] = __( 'Your Beeper version does not support media streaming. Please update to the latest Beeper Nightly.', 'chat-to-blog' );
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Check if the /assets/serve endpoint is available.
+	 * Returns true if available, false if not (old Beeper version).
+	 */
+	private function check_serve_endpoint() {
+		$response = wp_remote_get( $this->api_base . '/assets/serve', [
+			'headers'   => [
+				'Authorization' => 'Bearer ' . $this->token,
+			],
+			'timeout'   => 5,
+			'sslverify' => false,
+		] );
+
+		if ( is_wp_error( $response ) ) {
+			return false;
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+
+		// 400 = endpoint exists but missing url param, 404 = endpoint doesn't exist
+		return $code !== 404;
 	}
 
 	public function get_all_chats( $limit = 200 ) {
