@@ -492,6 +492,7 @@
 				$thumb.append('<div class="ctb-video-badge">VIDEO</div>');
 			}
 
+			$thumb.append('<button type="button" class="ctb-preview-btn" title="' + __('Preview', 'chat-to-blog') + '">&#9974;</button>');
 			$thumb.append('<button type="button" class="ctb-remove-selected">&times;</button>');
 			$grid.append($thumb);
 
@@ -750,8 +751,14 @@
 	$(document).on('click', '.ctb-preview-btn', function(e) {
 		e.preventDefault();
 		e.stopPropagation();
-		var media = $(this).closest('.ctb-media-item').data('media');
-		openLightbox(media);
+		var $mediaItem = $(this).closest('.ctb-media-item');
+		var $selectedThumb = $(this).closest('.ctb-selected-thumb');
+
+		if ($mediaItem.length) {
+			openLightbox($mediaItem.data('media'));
+		} else if ($selectedThumb.length) {
+			openLightboxForSelected($selectedThumb.data('media'));
+		}
 	});
 
 	$(document).on('dblclick', '.ctb-selected-thumb', function(e) {
