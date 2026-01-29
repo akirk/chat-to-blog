@@ -1,0 +1,24 @@
+{
+	"$schema": "https://playground.wordpress.net/blueprint-schema.json",
+	"meta": {
+		"title": "Outliner",
+		"description": "A plugin to create and manage outlines within WordPress posts and pages",
+		"author": "Alex Kirk"
+	},
+	"landingPage": "/outliner/",
+	"login": true,
+	"steps": [
+		{
+			"step": "installPlugin",
+			"pluginData": {
+				"resource": "git:directory",
+				"url": "https://github.com/akirk/outliner",
+				"ref": "main",
+				"refType": "branch"
+			},
+			"options": {
+				"targetFolderName": "outliner"
+			}
+		}
+	]
+}
