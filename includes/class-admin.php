@@ -345,15 +345,11 @@ class Admin {
 			// Use provided MIME type from Beeper, fall back to data URL
 			$mime_type = $provided_mime_type ?: $matches[1];
 
-			// Build filename using provided name or post title
-			if ( $provided_filename ) {
-				$filename = sanitize_file_name( $provided_filename );
-			} else {
-				$ext = $this->get_extension_from_mime( $mime_type ) ?: 'jpg';
-				$filename = count( $images ) > 1
-					? $base_filename . '-' . ( $index + 1 ) . '.' . $ext
-					: $base_filename . '.' . $ext;
-			}
+			// Build filename from post title with extension from original file or mime type
+			$ext = pathinfo( $provided_filename, PATHINFO_EXTENSION ) ?: $this->get_extension_from_mime( $mime_type ) ?: 'jpg';
+			$filename = count( $images ) > 1
+				? $base_filename . '-' . ( $index + 1 ) . '.' . $ext
+				: $base_filename . '.' . $ext;
 
 			// Save to WordPress media library
 			$result = $this->save_to_media_library( $binary_data, $filename, $mime_type, $mxc_url );
