@@ -313,6 +313,8 @@ class Admin {
 		foreach ( $images as $index => $image ) {
 			$mxc_url = $image['mxcUrl'] ?? null;
 			$data_url = $image['dataUrl'] ?? null;
+			$provided_mime_type = $image['mimeType'] ?? null;
+			$provided_filename = $image['fileName'] ?? null;
 
 			if ( ! $mxc_url || ! $data_url ) {
 				continue;
@@ -332,7 +334,6 @@ class Admin {
 				continue;
 			}
 
-			$mime_type = $matches[1];
 			$base64_data = $matches[2];
 			$binary_data = base64_decode( $base64_data );
 
@@ -341,11 +342,18 @@ class Admin {
 				continue;
 			}
 
-			// Build filename
-			$ext = $this->get_extension_from_mime( $mime_type ) ?: 'jpg';
-			$filename = count( $images ) > 1
-				? $base_filename . '-' . ( $index + 1 ) . '.' . $ext
-				: $base_filename . '.' . $ext;
+			// Use provided MIME type from Beeper, fall back to data URL
+			$mime_type = $provided_mime_type ?: $matches[1];
+
+			// Build filename using provided name or post title
+			if ( $provided_filename ) {
+				$filename = sanitize_file_name( $provided_filename );
+			} else {
+				$ext = $this->get_extension_from_mime( $mime_type ) ?: 'jpg';
+				$filename = count( $images ) > 1
+					? $base_filename . '-' . ( $index + 1 ) . '.' . $ext
+					: $base_filename . '.' . $ext;
+			}
 
 			// Save to WordPress media library
 			$result = $this->save_to_media_library( $binary_data, $filename, $mime_type, $mxc_url );

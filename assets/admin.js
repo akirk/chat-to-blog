@@ -816,11 +816,18 @@
 			if (imageCache[item.mxcUrl]) {
 				return Promise.resolve({
 					mxcUrl: item.mxcUrl,
-					dataUrl: imageCache[item.mxcUrl]
+					dataUrl: imageCache[item.mxcUrl],
+					mimeType: item.mimeType,
+					fileName: item.fileName
 				});
 			}
 			return fetchImageAsDataUrl(item.mxcUrl).then(function(dataUrl) {
-				return { mxcUrl: item.mxcUrl, dataUrl: dataUrl };
+				return {
+					mxcUrl: item.mxcUrl,
+					dataUrl: dataUrl,
+					mimeType: item.mimeType,
+					fileName: item.fileName
+				};
 			});
 		});
 
