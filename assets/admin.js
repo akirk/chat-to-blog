@@ -24,15 +24,19 @@
 		});
 	}
 
-	// Fetch media via WordPress AJAX and return as data URL
+	// Fetch media directly from Beeper API and return as data URL
 	function fetchImageAsDataUrl(mediaUrl) {
 		if (imageCache[mediaUrl]) {
 			return Promise.resolve(imageCache[mediaUrl]);
 		}
 
-		var url = config.ajaxUrl + '?action=ctb_serve_media&nonce=' + encodeURIComponent(config.nonce) + '&id=' + encodeURIComponent(mediaUrl);
+		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
 
-		return fetch(url)
+		return fetch(url, {
+			headers: {
+				'Authorization': 'Bearer ' + config.beeperToken
+			}
+		})
 			.then(function(response) {
 				if (!response.ok) throw new Error('Media fetch error: ' + response.status);
 				return response.blob();
@@ -63,6 +67,33 @@
 				console.error('Failed to load image:', err);
 				$img.addClass('ctb-error');
 				$img.removeClass('ctb-loading');
+			});
+	}
+
+	// Load video into a video element
+	function loadVideo($video, mxcUrl) {
+		$video.addClass('ctb-loading');
+
+		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mxcUrl);
+
+		fetch(url, {
+			headers: {
+				'Authorization': 'Bearer ' + config.beeperToken
+			}
+		})
+			.then(function(response) {
+				if (!response.ok) throw new Error('Video fetch error: ' + response.status);
+				return response.blob();
+			})
+			.then(function(blob) {
+				var objectUrl = URL.createObjectURL(blob);
+				$video.attr('src', objectUrl);
+				$video.removeClass('ctb-loading');
+			})
+			.catch(function(err) {
+				console.error('Failed to load video:', err);
+				$video.addClass('ctb-error');
+				$video.removeClass('ctb-loading');
 			});
 	}
 
@@ -338,16 +369,24 @@
 				$item.addClass('ctb-media-video');
 			}
 
-			var $img = $('<img>').attr('alt', '');
-			$item.append($img);
+			var useVideoTag = isVideo && !item.thumbnailUrl;
+
+			if (useVideoTag) {
+				var $video = $('<video muted preload="metadata">').attr('alt', '');
+				$item.append($video);
+				loadVideo($video, mxcUrl);
+			} else {
+				var $img = $('<img>').attr('alt', '');
+				$item.append($img);
+				var thumbnailUrl = isVideo && item.thumbnailUrl ? item.thumbnailUrl : mxcUrl;
+				loadImage($img, thumbnailUrl);
+			}
+
 			$item.append('<button type="button" class="ctb-preview-btn" title="' + __('Preview', 'chat-to-blog') + '">&#9974;</button>');
 
 			if (isVideo) {
 				$item.append('<div class="ctb-video-badge">VIDEO</div>');
 			}
-
-			var thumbnailUrl = isVideo && item.thumbnailUrl ? item.thumbnailUrl : mxcUrl;
-			loadImage($img, thumbnailUrl);
 
 			var isSelected = selectedMedia.some(function(m) { return m.id === item.id; });
 			if (isSelected) {
@@ -436,8 +475,18 @@
 				$thumb.addClass('ctb-selected-video');
 			}
 
-			var $img = $('<img>');
-			$thumb.append($img);
+			var useVideoTag = isVideo && !item.thumbnailUrl;
+
+			if (useVideoTag) {
+				var $video = $('<video muted preload="metadata">');
+				$thumb.append($video);
+				loadVideo($video, item.mxcUrl);
+			} else {
+				var $img = $('<img>');
+				$thumb.append($img);
+				var thumbnailUrl = isVideo && item.thumbnailUrl ? item.thumbnailUrl : item.mxcUrl;
+				loadImage($img, thumbnailUrl);
+			}
 
 			if (isVideo) {
 				$thumb.append('<div class="ctb-video-badge">VIDEO</div>');
@@ -445,9 +494,6 @@
 
 			$thumb.append('<button type="button" class="ctb-remove-selected">&times;</button>');
 			$grid.append($thumb);
-
-			var thumbnailUrl = isVideo && item.thumbnailUrl ? item.thumbnailUrl : item.mxcUrl;
-			loadImage($img, thumbnailUrl);
 
 			if (item.timestamp) {
 				var itemDate = new Date(item.timestamp);

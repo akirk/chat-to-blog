@@ -22,7 +22,6 @@ class Admin {
 		add_action( 'wp_ajax_ctb_save_token', [ $this, 'ajax_save_token' ] );
 		add_action( 'wp_ajax_ctb_get_chats', [ $this, 'ajax_get_chats' ] );
 		add_action( 'wp_ajax_ctb_get_media', [ $this, 'ajax_get_media' ] );
-		add_action( 'wp_ajax_ctb_serve_media', [ $this, 'ajax_serve_media' ] );
 		add_action( 'wp_ajax_ctb_create_post', [ $this, 'ajax_create_post' ] );
 	}
 
@@ -197,7 +196,7 @@ class Admin {
 			$beeper_id = $item['message_id'] . '_' . $item['attachment_index'];
 
 			$url = $item['mxcUrl'] ?? '';
-			$thumbnail_url = $item['posterImg'] ?? $url;
+			$thumbnail_url = $item['posterImg'] ?? '';
 
 			// Skip items without a valid media URL
 			if ( empty( $url ) ) {
@@ -237,73 +236,6 @@ class Admin {
 			'nextCursor' => $result['next_cursor'],
 		] );
 	}
-
-	public function ajax_serve_media() {
-		check_ajax_referer( 'chat_to_blog', 'nonce' );
-
-		$id = isset( $_GET['id'] ) ? urldecode( $_GET['id'] ) : '';
-
-		if ( empty( $id ) ) {
-			wp_die( esc_html__( 'No id specified', 'chat-to-blog' ), 400 );
-		}
-
-		if ( strpos( $id, 'localmxc://' ) === 0 || strpos( $id, 'mxc://' ) === 0 || strpos( $id, 'file://' ) === 0 ) {
-			$this->serve_mxc_media( $id );
-			return;
-		}
-
-		wp_die( esc_html__( 'Invalid media id', 'chat-to-blog' ), 400 );
-	}
-
-	private function serve_mxc_media( $media_url ) {
-		// Handle file:// URLs by reading directly from disk
-		if ( strpos( $media_url, 'file://' ) === 0 ) {
-			$file_path = urldecode( substr( $media_url, 7 ) );
-			if ( ! file_exists( $file_path ) ) {
-				/* translators: %s: file path */
-				wp_die( esc_html( sprintf( __( 'File not found: %s', 'chat-to-blog' ), $file_path ) ), 404 );
-			}
-
-			$mime_type = mime_content_type( $file_path );
-			header( 'Content-Type: ' . $mime_type );
-			header( 'Content-Length: ' . filesize( $file_path ) );
-			header( 'Cache-Control: public, max-age=86400' );
-			readfile( $file_path );
-			exit;
-		}
-
-		// Handle mxc:// and localmxc:// URLs via Beeper API
-		$url = 'http://localhost:23373/v1/assets/serve?' . http_build_query( [ 'url' => $media_url ] );
-
-		$response = wp_remote_get( $url, [
-			'headers' => [
-				'Authorization' => 'Bearer ' . $this->beeper->get_token(),
-			],
-			'timeout' => 30,
-		] );
-
-		if ( is_wp_error( $response ) ) {
-			/* translators: %s: error message */
-			wp_die( esc_html( sprintf( __( 'Failed to download: %s', 'chat-to-blog' ), $response->get_error_message() ) ), 500 );
-		}
-
-		$code = wp_remote_retrieve_response_code( $response );
-		if ( $code !== 200 ) {
-			/* translators: %d: HTTP error code */
-			wp_die( esc_html( sprintf( __( 'Beeper API error: %d', 'chat-to-blog' ), $code ) ), $code );
-		}
-
-		$body = wp_remote_retrieve_body( $response );
-		$content_type = wp_remote_retrieve_header( $response, 'content-type' );
-
-		header( 'Content-Type: ' . ( $content_type ?: 'image/jpeg' ) );
-		header( 'Content-Length: ' . strlen( $body ) );
-		header( 'Cache-Control: public, max-age=86400' );
-
-		echo $body;
-		exit;
-	}
-
 	public function ajax_create_post() {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
