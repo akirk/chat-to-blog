@@ -66,4 +66,5 @@ $token = $beeper->get_token();
 			<div id="ctb-token-status"></div>
 		</form>
 	</div>
+
 </div>

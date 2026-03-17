@@ -15,6 +15,10 @@ class Admin {
 		$this->beeper = new BeeperAPI();
 		$this->importer = new MediaImporter( $this->beeper );
 
+		add_filter( 'personal_crm_beeper_token', function ( $token ) {
+			return $token ?: $this->beeper->get_token();
+		} );
+
 		add_action( 'admin_menu', [ $this, 'register_menus' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 
@@ -80,11 +84,17 @@ class Admin {
 			true
 		);
 
+		$beeper_config = $this->get_beeper_client_config();
+
+		wp_localize_script( 'chat-to-blog-beeper-client', 'BeeperClientConfig', $beeper_config );
+
 		wp_localize_script( 'chat-to-blog-admin', 'ctbConfig', [
-			'ajaxUrl'         => admin_url( 'admin-ajax.php' ),
-			'nonce'           => wp_create_nonce( 'chat_to_blog' ),
-			'beeperToken'     => $this->beeper->get_token(),
-			'importedUrls'    => array_keys( $this->importer->get_all_imported_urls() ),
+			'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
+			'nonce'            => wp_create_nonce( 'chat_to_blog' ),
+			'beeperToken'      => $this->beeper->get_token(),
+			'importedUrls'     => array_keys( $this->importer->get_all_imported_urls() ),
+			'demoMode'         => $beeper_config['demoMode'],
+			'placeholderImage' => $beeper_config['placeholderImage'],
 		] );
 
 		wp_set_script_translations( 'chat-to-blog-admin', 'chat-to-blog', CHAT_TO_BLOG_PATH . 'languages' );
@@ -96,6 +106,15 @@ class Admin {
 
 	public function render_media_browser() {
 		include CHAT_TO_BLOG_PATH . 'templates/media-browser.php';
+	}
+
+	private function get_beeper_client_config() {
+		$demo_mode = (bool) apply_filters( 'personal_crm_demo_mode', false );
+		return [
+			'demoMode'         => $demo_mode,
+			'fakeNames'        => apply_filters( 'personal_crm_demo_names', [ 'first' => [], 'last' => [] ] ),
+			'placeholderImage' => $demo_mode ? apply_filters( 'personal_crm_demo_placeholder_image', '' ) : '',
+		];
 	}
 
 	public function ajax_test_connection() {
@@ -159,11 +178,13 @@ class Admin {
 			wp_send_json_error( $result->get_error_message() );
 		}
 
+		$demo_mode = (bool) apply_filters( 'personal_crm_demo_mode', false );
 		$chats = [];
 		foreach ( $result['items'] as $chat ) {
+			$title = $chat['title'] ?? $chat['name'] ?? 'Unknown';
 			$chats[] = [
 				'id'           => $chat['id'],
-				'title'        => $chat['title'] ?? $chat['name'] ?? 'Unknown',
+				'title'        => $demo_mode ? BeeperAPI::anonymize_name( $title ) : $title,
 				'type'         => $chat['type'] ?? 'unknown',
 				'network'      => $chat['network'] ?? '',
 				'lastActivity' => $chat['lastActivity'] ?? '',

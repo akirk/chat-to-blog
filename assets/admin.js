@@ -13,6 +13,37 @@
 	var currentCursor = null;
 	var imageCache = {};
 	var importedUrls = new Set(config.importedUrls || []);
+
+	var DEMO_SEEN_KEY = 'ctb_demo_seen_images';
+	var DEMO_WHITELIST_KEY = 'ctb_demo_whitelist';
+
+	function demoGetSeen() {
+		try { return JSON.parse(localStorage.getItem(DEMO_SEEN_KEY) || '[]'); } catch(e) { return []; }
+	}
+
+	function demoGetWhitelist() {
+		try { return JSON.parse(localStorage.getItem(DEMO_WHITELIST_KEY) || '[]'); } catch(e) { return []; }
+	}
+
+	function demoIsWhitelisted(mxcUrl) {
+		return demoGetWhitelist().indexOf(mxcUrl) !== -1;
+	}
+
+	function demoRecordSeen(item) {
+		if (!config.demoMode || !item.mxcUrl) return;
+		var seen = demoGetSeen();
+		var exists = seen.some(function(s) { return s.mxcUrl === item.mxcUrl; });
+		if (!exists) {
+			seen.push({
+				mxcUrl:    item.mxcUrl,
+				sender:    item.sender || '',
+				timestamp: item.timestamp || '',
+				type:      item.type || 'img',
+			});
+			localStorage.setItem(DEMO_SEEN_KEY, JSON.stringify(seen));
+		}
+	}
+
 	var cumulativeStats = { totalMessages: 0, mediaRendered: 0, skippedTypes: {} };
 
 	// WordPress AJAX helper
@@ -26,6 +57,10 @@
 
 	// Fetch media directly from Beeper API and return as data URL
 	function fetchImageAsDataUrl(mediaUrl) {
+		if (config.demoMode && config.placeholderImage && !demoIsWhitelisted(mediaUrl)) {
+			return Promise.resolve(config.placeholderImage);
+		}
+
 		if (imageCache[mediaUrl]) {
 			return Promise.resolve(imageCache[mediaUrl]);
 		}
@@ -72,6 +107,11 @@
 
 	// Load video into a video element
 	function loadVideo($video, mxcUrl) {
+		if (config.demoMode && config.placeholderImage && !demoIsWhitelisted(mxcUrl)) {
+			$video.replaceWith($('<img>').attr({ src: config.placeholderImage, alt: '' }).addClass('ctb-demo-placeholder'));
+			return;
+		}
+
 		$video.addClass('ctb-loading');
 
 		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mxcUrl);
@@ -361,6 +401,8 @@
 			}
 
 			stats.mediaRendered++;
+
+			demoRecordSeen(item);
 
 			var isVideo = item.type === 'video' || (item.mimeType && item.mimeType.indexOf('video/') === 0);
 			var $item = $('<div class="ctb-media-item">').data('media', item);

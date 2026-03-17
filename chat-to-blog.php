@@ -4,6 +4,7 @@
  * Description: Import media from Beeper chats and create blog posts
  * Version: 0.9.4
  * Author: Alex Kirk
+ * Author URI: https://alex.kirk.at/
  * License: GPL v2 or later
  * Text Domain: chat-to-blog
  */

@@ -229,6 +229,33 @@ class BeeperAPI {
 		];
 	}
 
+	public static function anonymize_name( $name ) {
+		if ( empty( $name ) ) {
+			return $name;
+		}
+
+		$names       = apply_filters( 'personal_crm_demo_names', [ 'first' => [], 'last' => [] ] );
+		$first_names = $names['first'] ?? [];
+		$last_names  = $names['last'] ?? [];
+
+		if ( empty( $first_names ) ) {
+			return $name;
+		}
+
+		$sum = 0;
+		foreach ( mb_str_split( $name ) as $char ) {
+			$sum += mb_ord( $char );
+		}
+
+		$first = $first_names[ $sum % count( $first_names ) ];
+
+		if ( ! empty( $last_names ) && str_contains( trim( $name ), ' ' ) ) {
+			return $first . ' ' . $last_names[ ( $sum * 7 + 3 ) % count( $last_names ) ];
+		}
+
+		return $first;
+	}
+
 	/**
 	 * Download media from a URL.
 	 *

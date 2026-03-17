@@ -4,10 +4,59 @@
  * Makes direct requests to Beeper Desktop API (localhost:23373)
  */
 
+const BEEPER_DEMO_FIRST_NAMES = ['Alice', 'Bob', 'Carol', 'David', 'Emma', 'Frank', 'Grace', 'Henry', 'Isabel', 'James', 'Kate', 'Liam', 'Maya', 'Noah', 'Olivia', 'Peter', 'Quinn', 'Rachel', 'Sam', 'Tara'];
+const BEEPER_DEMO_LAST_NAMES  = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Wilson', 'Moore', 'Taylor', 'Anderson', 'Thomas', 'Jackson', 'White', 'Harris', 'Martin', 'Thompson', 'Young', 'Clark'];
+
 class BeeperClient {
 	constructor(token, apiBase = 'http://localhost:23373/v1') {
 		this.token = token;
 		this.apiBase = apiBase;
+		const cfg = window.BeeperClientConfig || {};
+		this.demoMode       = cfg.demoMode || false;
+		this.fakeFirstNames = (cfg.fakeNames && cfg.fakeNames.first && cfg.fakeNames.first.length) ? cfg.fakeNames.first : BEEPER_DEMO_FIRST_NAMES;
+		this.fakeLastNames  = (cfg.fakeNames && cfg.fakeNames.last  && cfg.fakeNames.last.length)  ? cfg.fakeNames.last  : BEEPER_DEMO_LAST_NAMES;
+	}
+
+	_fakeName(name, type = 'person') {
+		if (!name) return name;
+		if (this.demoMode) {
+			this._recordSeenName(name, type);
+			const override = this._getNameOverride(name);
+			if (override !== undefined && override !== '') return override;
+		}
+		let sum = 0;
+		for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
+		const first = this.fakeFirstNames[sum % this.fakeFirstNames.length];
+		if (name.trim().includes(' ')) {
+			return first + ' ' + this.fakeLastNames[(sum * 7 + 3) % this.fakeLastNames.length];
+		}
+		return first;
+	}
+
+	_getNameOverride(name) {
+		try {
+			const o = JSON.parse(localStorage.getItem('bdm_name_overrides') || '{}');
+			return o[name];
+		} catch(e) { return undefined; }
+	}
+
+	_recordSeenName(name, type) {
+		if (!name) return;
+		try {
+			const seen = JSON.parse(localStorage.getItem('bdm_seen_names') || '[]');
+			if (!seen.some(n => n.name === name)) {
+				seen.push({ name, type });
+				localStorage.setItem('bdm_seen_names', JSON.stringify(seen));
+			}
+		} catch(e) {}
+	}
+
+	_anonymizeChat(chat) {
+		if (!chat) return chat;
+		const c = Object.assign({}, chat);
+		if (c.title) c.title = this._fakeName(c.title, c.type || 'group');
+		else if (c.name) c.name = this._fakeName(c.name, c.type || 'group');
+		return c;
 	}
 
 	isConfigured() {
@@ -72,7 +121,7 @@ class BeeperClient {
 			return bTime.localeCompare(aTime);
 		});
 
-		return { success: true, data: { items: items } };
+		return { success: true, data: { items: this.demoMode ? items.map(c => this._anonymizeChat(c)) : items } };
 	}
 
 	async getChat(chatId) {
@@ -121,12 +170,15 @@ class BeeperClient {
 				for (const att of attachments) {
 					console.log('[CTB Debug] Attachment:', att.type, att.id);
 					if (att.type === 'img' || att.type === 'video') {
+						const rawSender = msg.senderName || (msg.isSender ? 'You' : 'Unknown');
 						mediaItems.push({
 							id: att.id,
 							mxcUrl: att.id,
 							timestamp: msg.timestamp,
 							text: msg.text || '',
-							sender: msg.senderName || (msg.isSender ? 'You' : 'Unknown'),
+							sender: (this.demoMode && !msg.isSender && msg.senderName)
+								? this._fakeName(msg.senderName)
+								: rawSender,
 							mimeType: att.mimeType,
 							fileName: att.fileName,
 							sortKey: msg.sortKey
