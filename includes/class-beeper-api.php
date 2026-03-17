@@ -234,7 +234,7 @@ class BeeperAPI {
 			return $name;
 		}
 
-		$names       = apply_filters( 'personal_crm_demo_names', [ 'first' => [], 'last' => [] ] );
+		$names       = apply_filters( 'beeper_demo_names', [ 'first' => [], 'last' => [] ] );
 		$first_names = $names['first'] ?? [];
 		$last_names  = $names['last'] ?? [];
 

@@ -109,11 +109,11 @@ class Admin {
 	}
 
 	private function get_beeper_client_config() {
-		$demo_mode = (bool) apply_filters( 'personal_crm_demo_mode', false );
+		$demo_mode = (bool) apply_filters( 'beeper_demo_mode', false );
 		return [
 			'demoMode'         => $demo_mode,
-			'fakeNames'        => apply_filters( 'personal_crm_demo_names', [ 'first' => [], 'last' => [] ] ),
-			'placeholderImage' => $demo_mode ? apply_filters( 'personal_crm_demo_placeholder_image', '' ) : '',
+			'fakeNames'        => apply_filters( 'beeper_demo_names', [ 'first' => [], 'last' => [] ] ),
+			'placeholderImage' => $demo_mode ? apply_filters( 'beeper_demo_placeholder_image', '' ) : '',
 		];
 	}
 
@@ -178,7 +178,7 @@ class Admin {
 			wp_send_json_error( $result->get_error_message() );
 		}
 
-		$demo_mode = (bool) apply_filters( 'personal_crm_demo_mode', false );
+		$demo_mode = (bool) apply_filters( 'beeper_demo_mode', false );
 		$chats = [];
 		foreach ( $result['items'] as $chat ) {
 			$title = $chat['title'] ?? $chat['name'] ?? 'Unknown';
