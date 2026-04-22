@@ -55,8 +55,190 @@
 		});
 	}
 
-	// Fetch media directly from Beeper API and return as data URL
-	function fetchImageAsDataUrl(mediaUrl) {
+	var fetchQueue = [];
+	var activeFetches = 0;
+	var MAX_CONCURRENT_FETCHES = 1;
+	var queuePausedUntil = 0;
+	var consecutive502s = 0;
+	var viewAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+
+	// When Beeper's proxy starts returning 502 it usually keeps doing so
+	// for a short window. Back off exponentially on consecutive 502s so we
+	// don't keep hammering the queue into the ground.
+	function notifyFetchOutcome(status) {
+		if (status === 502 || status === 503 || status === 504) {
+			consecutive502s = Math.min(consecutive502s + 1, 5);
+			var backoffMs = Math.min(3000, 400 * Math.pow(2, consecutive502s - 1)); // 400, 800, 1600, 3000, 3000
+			queuePausedUntil = Math.max(queuePausedUntil, Date.now() + backoffMs);
+		} else if (status >= 200 && status < 300) {
+			consecutive502s = 0;
+		}
+	}
+
+	function abortPendingViewFetches() {
+		if (viewAbortController) {
+			try { viewAbortController.abort(); } catch (e) {}
+			viewAbortController = new AbortController();
+		}
+		// Drop queued (not-yet-fired) fetches so we don't spend API budget on the old view
+		while (fetchQueue.length > 0) {
+			var item = fetchQueue.shift();
+			try { item.reject(new DOMException('Aborted', 'AbortError')); } catch (e) {}
+		}
+	}
+
+	function isAbortError(err) {
+		if (!err) return false;
+		if (err.isTimeout) return false;
+		return err.name === 'AbortError' || /aborted/i.test(err.message || '');
+	}
+
+	function processFetchQueue() {
+		var now = Date.now();
+		if (now < queuePausedUntil) {
+			setTimeout(processFetchQueue, queuePausedUntil - now);
+			return;
+		}
+		while (activeFetches < MAX_CONCURRENT_FETCHES && fetchQueue.length > 0) {
+			var next = fetchQueue.shift();
+			activeFetches++;
+			Promise.resolve(next.run()).finally(function() {
+				activeFetches--;
+				processFetchQueue();
+			});
+		}
+	}
+
+	function throttledFetch(url, options) {
+		var viewSignal = viewAbortController ? viewAbortController.signal : null;
+		var onStart = options && options.onStart;
+		var timeoutMs = options && options.timeoutMs;
+		var mergedOptions = Object.assign({}, options || {});
+		delete mergedOptions.onStart;
+		delete mergedOptions.timeoutMs;
+
+		return new Promise(function(resolve, reject) {
+			if (viewSignal && viewSignal.aborted) {
+				reject(new DOMException('Aborted', 'AbortError'));
+				return;
+			}
+
+			var perFetchController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+			var timedOut = false;
+			var viewAborted = false;
+			var timeoutId = null;
+
+			var onViewAbort = function() {
+				viewAborted = true;
+				if (perFetchController) perFetchController.abort();
+			};
+			if (viewSignal) viewSignal.addEventListener('abort', onViewAbort);
+
+			var cleanup = function() {
+				if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+				if (viewSignal) viewSignal.removeEventListener('abort', onViewAbort);
+			};
+
+			var item = {
+				reject: function(err) { cleanup(); reject(err); },
+				run: function() {
+					if (perFetchController && perFetchController.signal.aborted) {
+						cleanup();
+						reject(new DOMException('Aborted', 'AbortError'));
+						return Promise.resolve();
+					}
+					if (typeof onStart === 'function') {
+						try { onStart(); } catch (e) {}
+					}
+
+					if (timeoutMs && perFetchController) {
+						timeoutId = setTimeout(function() {
+							timedOut = true;
+							perFetchController.abort();
+						}, timeoutMs);
+					}
+
+					var fetchOpts = Object.assign({}, mergedOptions);
+					if (perFetchController) fetchOpts.signal = perFetchController.signal;
+
+					return fetch(url, fetchOpts)
+						.then(function(response) { cleanup(); resolve(response); })
+						.catch(function(err) {
+							cleanup();
+							if (timedOut && !viewAborted) {
+								var timeoutErr = new Error('Request timed out after ' + timeoutMs + 'ms');
+								timeoutErr.isTimeout = true;
+								reject(timeoutErr);
+							} else {
+								reject(err);
+							}
+						});
+				}
+			};
+
+			fetchQueue.push(item);
+			processFetchQueue();
+		});
+	}
+
+	// Parse Beeper error body and turn it into a structured Error whose
+	// `.permanent` flag distinguishes "attachment not found" (no point
+	// retrying) from transient failures (502 from overload, etc).
+	function parseFetchError(response) {
+		return response.text().then(function(body) {
+			var err = new Error('Media fetch error: ' + response.status);
+			err.status = response.status;
+			try {
+				var parsed = JSON.parse(body);
+				err.code = parsed.code;
+				err.detail = parsed.message;
+				err.permanent = parsed.code === 'SERVE_ASSET_ERROR' &&
+					/not found|no longer available/i.test(parsed.message || '');
+			} catch (e) {}
+			return err;
+		}).catch(function() {
+			var err = new Error('Media fetch error: ' + response.status);
+			err.status = response.status;
+			return err;
+		}).then(function(err) { throw err; });
+	}
+
+	var MEDIA_FETCH_TIMEOUT_MS = 150;
+
+	function fetchBlob(mediaUrl, onStart) {
+		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
+		return throttledFetch(url, {
+			headers: { 'Authorization': 'Bearer ' + config.beeperToken },
+			onStart: onStart,
+			timeoutMs: MEDIA_FETCH_TIMEOUT_MS
+		}).then(function(response) {
+			notifyFetchOutcome(response.status);
+			if (!response.ok) return parseFetchError(response);
+			return response.blob();
+		});
+	}
+
+	function fetchBlobWithRetry(mediaUrl, retriesLeft, onStart) {
+		return fetchBlob(mediaUrl, onStart).catch(function(err) {
+			// Skip auto-retry for timeouts (Beeper just doesn't have this
+			// asset available quickly) and permanent errors. The manual
+			// ↻ button is still there if the user wants to try again.
+			if (retriesLeft > 0 && !err.permanent && !err.isTimeout) {
+				return new Promise(function(resolve, reject) {
+					setTimeout(function() {
+						fetchBlobWithRetry(mediaUrl, retriesLeft - 1, onStart).then(resolve, reject);
+					}, 600);
+				});
+			}
+			throw err;
+		});
+	}
+
+	// Fetch media via Beeper and return as data URL (cached on success).
+	// onStart fires when the fetch actually hits the network (past the
+	// throttle queue), so callers can show a loading indicator only for
+	// images that are really in flight.
+	function fetchImageAsDataUrl(mediaUrl, onStart) {
 		if (config.demoMode && config.placeholderImage && !demoIsWhitelisted(mediaUrl)) {
 			return Promise.resolve(config.placeholderImage);
 		}
@@ -65,75 +247,95 @@
 			return Promise.resolve(imageCache[mediaUrl]);
 		}
 
-		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
-
-		return fetch(url, {
-			headers: {
-				'Authorization': 'Bearer ' + config.beeperToken
-			}
-		})
-			.then(function(response) {
-				if (!response.ok) throw new Error('Media fetch error: ' + response.status);
-				return response.blob();
-			})
-			.then(function(blob) {
-				return new Promise(function(resolve) {
-					var reader = new FileReader();
-					reader.onloadend = function() {
-						imageCache[mediaUrl] = reader.result;
-						resolve(reader.result);
-					};
-					reader.readAsDataURL(blob);
-				});
+		return fetchBlobWithRetry(mediaUrl, 1, onStart).then(function(blob) {
+			return new Promise(function(resolve) {
+				var reader = new FileReader();
+				reader.onloadend = function() {
+					imageCache[mediaUrl] = reader.result;
+					resolve(reader.result);
+				};
+				reader.readAsDataURL(blob);
 			});
+		});
 	}
 
-	// Load image into an img element
+	function clearMediaErrorState($item) {
+		$item.removeClass('ctb-media-unavailable ctb-media-failed');
+		$item.find('.ctb-retry-btn, .ctb-unavailable-overlay').remove();
+	}
+
+	function attachMediaErrorState($item, err, onRetry) {
+		clearMediaErrorState($item);
+		$item.addClass('ctb-media-failed');
+
+		if (err.permanent) {
+			$item.addClass('ctb-media-unavailable');
+			var title = err.detail || __('Media no longer available on server', 'chat-to-blog');
+			$item.append($('<div class="ctb-unavailable-overlay">').attr('title', title).text('🚫'));
+		}
+
+		// Always expose a retry button, even on "permanent" errors — the
+		// server sometimes reports the asset as gone transiently, so let
+		// the user force another attempt rather than giving up silently.
+		var $retry = $('<button type="button" class="ctb-retry-btn">')
+			.attr('title', err.permanent ? __('Retry anyway', 'chat-to-blog') : __('Retry', 'chat-to-blog'))
+			.text('↻');
+		$retry.on('click', function(e) {
+			e.stopPropagation();
+			onRetry();
+		});
+		$item.append($retry);
+	}
+
 	function loadImage($img, mxcUrl) {
 		$img.attr('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'); // 1px placeholder
-		$img.addClass('ctb-loading');
+		$img.removeClass('ctb-loading ctb-error');
+		var $item = $img.closest('.ctb-media-item, .ctb-selected-thumb');
+		clearMediaErrorState($item);
 
-		fetchImageAsDataUrl(mxcUrl)
+		fetchImageAsDataUrl(mxcUrl, function() {
+			$img.addClass('ctb-loading');
+		})
 			.then(function(dataUrl) {
 				$img.attr('src', dataUrl);
 				$img.removeClass('ctb-loading');
 			})
 			.catch(function(err) {
-				console.error('Failed to load image:', err);
-				$img.addClass('ctb-error');
 				$img.removeClass('ctb-loading');
+				if (isAbortError(err)) return;
+				console.warn('Failed to load image:', err);
+				$img.addClass('ctb-error');
+				attachMediaErrorState($item, err, function() {
+					loadImage($img, mxcUrl);
+				});
 			});
 	}
 
-	// Load video into a video element
 	function loadVideo($video, mxcUrl) {
 		if (config.demoMode && config.placeholderImage && !demoIsWhitelisted(mxcUrl)) {
 			$video.replaceWith($('<img>').attr({ src: config.placeholderImage, alt: '' }).addClass('ctb-demo-placeholder'));
 			return;
 		}
 
-		$video.addClass('ctb-loading');
+		$video.removeClass('ctb-loading ctb-error');
+		var $item = $video.closest('.ctb-media-item, .ctb-selected-thumb');
+		clearMediaErrorState($item);
 
-		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mxcUrl);
-
-		fetch(url, {
-			headers: {
-				'Authorization': 'Bearer ' + config.beeperToken
-			}
+		fetchBlobWithRetry(mxcUrl, 1, function() {
+			$video.addClass('ctb-loading');
 		})
-			.then(function(response) {
-				if (!response.ok) throw new Error('Video fetch error: ' + response.status);
-				return response.blob();
-			})
 			.then(function(blob) {
-				var objectUrl = URL.createObjectURL(blob);
-				$video.attr('src', objectUrl);
+				$video.attr('src', URL.createObjectURL(blob));
 				$video.removeClass('ctb-loading');
 			})
 			.catch(function(err) {
-				console.error('Failed to load video:', err);
-				$video.addClass('ctb-error');
 				$video.removeClass('ctb-loading');
+				if (isAbortError(err)) return;
+				console.warn('Failed to load video:', err);
+				$video.addClass('ctb-error');
+				attachMediaErrorState($item, err, function() {
+					loadVideo($video, mxcUrl);
+				});
 			});
 	}
 
@@ -304,65 +506,477 @@
 
 		currentChatId = chat.id;
 		currentCursor = null;
+		selectedMonth = null;
+		abortPendingViewFetches();
+		$('#ctb-timeline-reset').hide();
+		initTimeline(chat.id);
 		loadMedia(false);
 	});
 
-	$('#ctb-load-more').on('click', function() {
+	$(document).on('click', '.ctb-load-more-tile', function(e) {
+		e.preventDefault();
+		if ($(this).hasClass('ctb-load-more-tile-loading')) return;
+		$(this).addClass('ctb-load-more-tile-loading');
 		loadMedia(true);
 	});
 
-	function loadMedia(append) {
+	var timelineScan = null;
+	var monthNames = null;
+	var selectedMonth = null;
+
+	function getMonthNames() {
+		if (!monthNames) {
+			monthNames = [
+				__('Jan', 'chat-to-blog'), __('Feb', 'chat-to-blog'), __('Mar', 'chat-to-blog'),
+				__('Apr', 'chat-to-blog'), __('May', 'chat-to-blog'), __('Jun', 'chat-to-blog'),
+				__('Jul', 'chat-to-blog'), __('Aug', 'chat-to-blog'), __('Sep', 'chat-to-blog'),
+				__('Oct', 'chat-to-blog'), __('Nov', 'chat-to-blog'), __('Dec', 'chat-to-blog')
+			];
+		}
+		return monthNames;
+	}
+
+	function monthKey(year, month) {
+		return year + '-' + (month < 10 ? '0' + month : '' + month);
+	}
+
+	function isValidMessageTimestamp(msg) {
+		if (!msg || !msg.timestamp) return false;
+		var t = new Date(msg.timestamp).getTime();
+		if (isNaN(t)) return false;
+		// Ignore bogus 0001-01-01-ish timestamps (some chats have outliers
+		// from corrupted rows or system events). Matrix/Beeper history
+		// doesn't pre-date ~2014, so anything before 2000 is wrong.
+		if (new Date(msg.timestamp).getFullYear() < 2000) return false;
+		return true;
+	}
+
+	var timelineScanController = null;
+	var monthLoadController = null;
+	var monthLoadToken = 0;
+	var timelineRenderDue = 0;
+	var timelineRenderTimer = null;
+	var TIMELINE_RENDER_MIN_INTERVAL_MS = 400;
+
+	function renderTimelineThrottled(scan, immediate) {
+		var now = Date.now();
+		if (immediate || now >= timelineRenderDue) {
+			if (timelineRenderTimer) {
+				clearTimeout(timelineRenderTimer);
+				timelineRenderTimer = null;
+			}
+			timelineRenderDue = now + TIMELINE_RENDER_MIN_INTERVAL_MS;
+			renderTimeline(scan);
+			return;
+		}
+		if (timelineRenderTimer) return;
+		timelineRenderTimer = setTimeout(function() {
+			timelineRenderTimer = null;
+			timelineRenderDue = Date.now() + TIMELINE_RENDER_MIN_INTERVAL_MS;
+			renderTimeline(scan);
+		}, timelineRenderDue - now);
+	}
+
+	function initTimeline(chatId) {
+		if (timelineScanController) {
+			try { timelineScanController.abort(); } catch (e) {}
+		}
+		timelineScanController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+
+		timelineScan = {
+			chatId: chatId,
+			counts: {},
+			boundaryCursors: {},
+			lastSeenMonth: null,
+			lastSortKey: null,
+			scannedMessages: 0,
+			complete: false
+		};
+
+		$('#ctb-timeline').show();
+		$('#ctb-timeline-bars').empty();
+		renderTimeline(timelineScan);
+
+		startTimelineCountScan(chatId);
+	}
+
+	// Fast counts-only scan — walks every message once to fill in the bar
+	// chart. Does NOT fetch media; that happens on demand when a month is
+	// clicked. This is the only long-running background activity, and its
+	// progress is visible in the timeline header.
+	async function startTimelineCountScan(chatId) {
+		var controller = timelineScanController;
+		var signal = controller ? controller.signal : null;
+		var scan = timelineScan;
+		var cursor = null;
+		var maxBatches = 20000;
+
+		$('.ctb-timeline-status').text(__('Scanning history…', 'chat-to-blog'));
+
+		try {
+			for (var i = 0; i < maxBatches; i++) {
+				if (scan.chatId !== chatId || (signal && signal.aborted)) return;
+				var result = await beeper.getChatMessages(chatId, cursor, 'before', 500, signal);
+				if (result.aborted || scan.chatId !== chatId) return;
+				if (!result.success) {
+					$('.ctb-timeline-status').text(result.error);
+					return;
+				}
+				var items = result.data.items || [];
+				if (items.length === 0) break;
+
+				var encounteredNewMonth = false;
+				for (var j = 0; j < items.length; j++) {
+					var msg = items[j];
+					scan.scannedMessages++;
+					if (!isValidMessageTimestamp(msg)) {
+						if (msg.sortKey) scan.lastSortKey = msg.sortKey;
+						continue;
+					}
+					var d = new Date(msg.timestamp);
+					var key = monthKey(d.getFullYear(), d.getMonth() + 1);
+					if (!(key in scan.counts)) {
+						scan.counts[key] = 0;
+						encounteredNewMonth = true;
+					}
+					scan.counts[key]++;
+					if (!(key in scan.boundaryCursors)) {
+						scan.boundaryCursors[key] = scan.lastSortKey;
+					}
+					scan.lastSeenMonth = key;
+					scan.lastSortKey = msg.sortKey;
+				}
+
+				// Redraw on new-month discovery so the bar appears quickly,
+				// then throttle subsequent redraws to at most once per
+				// ~400ms. That keeps growing bars visible without
+				// rebuilding the DOM on every tiny batch.
+				if (encounteredNewMonth) {
+					renderTimelineThrottled(scan, true);
+				} else {
+					renderTimelineThrottled(scan, false);
+				}
+				$('.ctb-timeline-status').text(sprintf(
+					/* translators: %d: number of messages scanned so far */
+					__('Scanning… %d messages', 'chat-to-blog'),
+					scan.scannedMessages
+				));
+
+				if (!result.data.hasMore) break;
+				var next = items[items.length - 1].sortKey;
+				if (next === cursor) break;
+				cursor = next;
+			}
+
+			if (scan.chatId !== chatId) return;
+			scan.complete = true;
+			renderTimeline(scan);
+			$('.ctb-timeline-status').text(sprintf(
+				/* translators: %d: total messages scanned */
+				__('Scanned %d messages', 'chat-to-blog'),
+				scan.scannedMessages
+			));
+		} catch (err) {
+			if (isAbortError(err)) return;
+			$('.ctb-timeline-status').text(err.message || String(err));
+		}
+	}
+
+	function renderTimeline(scan) {
+		const keys = Object.keys(scan.counts).sort();
+		if (keys.length === 0) return;
+
+		const firstParts = keys[0].split('-').map(Number);
+		const lastParts = keys[keys.length - 1].split('-').map(Number);
+		const firstYear = firstParts[0], firstMonth = firstParts[1];
+		const lastYear = lastParts[0], lastMonth = lastParts[1];
+
+		const allMonths = [];
+		let y = lastYear, m = lastMonth;
+		while (y > firstYear || (y === firstYear && m >= firstMonth)) {
+			const key = monthKey(y, m);
+			allMonths.push({ key: key, year: y, month: m, count: scan.counts[key] || 0 });
+			m--;
+			if (m < 1) { m = 12; y--; }
+		}
+
+		let maxCount = 1;
+		allMonths.forEach(function(mo) { if (mo.count > maxCount) maxCount = mo.count; });
+
+		const names = getMonthNames();
+		const $bars = $('#ctb-timeline-bars');
+		const existing = $bars.find('.ctb-timeline-bar').toArray();
+
+		// Update in place rather than empty()+append so clicks on already-
+		// visible bars aren't lost to a redraw. We only ever append new
+		// bars (older months) to the right, never remove or reorder.
+		let prevYear = null;
+		allMonths.forEach(function(mo, idx) {
+			const pct = mo.count > 0 ? Math.max(2, (mo.count / maxCount) * 100) : 0;
+			const tooltip = names[mo.month - 1] + ' ' + mo.year + ' · ' + sprintf(
+				/* translators: %d: number of messages in a given month */
+				_n('%d message', '%d messages', mo.count, 'chat-to-blog'),
+				mo.count
+			);
+			const existingEl = existing[idx];
+			const needsYearLabel = mo.year !== prevYear;
+
+			if (existingEl && String(existingEl.dataset.year) === String(mo.year) && String(existingEl.dataset.month) === String(mo.month)) {
+				// Reuse — update height / tooltip / active / year label only.
+				const $bar = $(existingEl);
+				$bar.attr('title', tooltip);
+				$bar.find('.ctb-timeline-bar-fill').css('height', pct + '%');
+				const isActive = !!(selectedMonth && selectedMonth.year === mo.year && selectedMonth.month === mo.month);
+				$bar.toggleClass('active', isActive);
+				const $existingYear = $bar.find('.ctb-timeline-bar-year');
+				if (needsYearLabel && $existingYear.length === 0) {
+					$bar.append($('<span class="ctb-timeline-bar-year">').text(mo.year));
+				} else if (!needsYearLabel && $existingYear.length > 0) {
+					$existingYear.remove();
+				}
+			} else {
+				const $bar = $('<button type="button" class="ctb-timeline-bar">')
+					.attr('data-year', mo.year)
+					.attr('data-month', mo.month)
+					.attr('title', tooltip);
+				if (selectedMonth && selectedMonth.year === mo.year && selectedMonth.month === mo.month) {
+					$bar.addClass('active');
+				}
+				$bar.append($('<span class="ctb-timeline-bar-fill">').css('height', pct + '%'));
+				$bar.append($('<span class="ctb-timeline-bar-month">').text(names[mo.month - 1]));
+				if (needsYearLabel) {
+					$bar.append($('<span class="ctb-timeline-bar-year">').text(mo.year));
+				}
+				$bars.append($bar);
+			}
+			prevYear = mo.year;
+		});
+
+		// Trim any stale bars beyond the current month list (shouldn't
+		// usually happen, but covers the case of a chat switch that
+		// re-renders into the same DOM before empty() is called).
+		for (let i = allMonths.length; i < existing.length; i++) {
+			existing[i].parentNode && existing[i].parentNode.removeChild(existing[i]);
+		}
+	}
+
+	$(document).on('click', '.ctb-timeline-bar', function() {
+		if (!currentChatId) return;
+		const year = parseInt($(this).attr('data-year'), 10);
+		const month = parseInt($(this).attr('data-month'), 10);
+
+		abortPendingViewFetches();
+		selectedMonth = { year: year, month: month };
+		$('.ctb-timeline-bar').removeClass('active');
+		$(this).addClass('active');
+		$('#ctb-timeline-reset').show();
+
+		showMonth(year, month);
+	});
+
+	$('#ctb-timeline-reset').on('click', function() {
+		if (!currentChatId) return;
+		abortPendingViewFetches();
+		if (monthLoadController) {
+			try { monthLoadController.abort(); } catch (e) {}
+			monthLoadController = null;
+		}
+		monthLoadToken++;
+		currentCursor = null;
+		selectedMonth = null;
+		$('.ctb-timeline-bar').removeClass('active');
+		$(this).hide();
+		loadMedia(false);
+	});
+
+	async function showMonth(year, month) {
 		if (!currentChatId) return;
 
-		var $grid = $('#ctb-media-grid');
-		var $loadMore = $('#ctb-load-more-wrap');
-		var $spinner = $loadMore.find('.spinner');
-		var $stats = $('#ctb-load-stats');
-
-		if (!append) {
-			$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Loading media...', 'chat-to-blog') + '</div>');
-			$stats.empty();
-			cumulativeStats = { totalMessages: 0, mediaRendered: 0, skippedTypes: {} };
+		// Cancel any in-flight thumbnail fetches and prior month load.
+		abortPendingViewFetches();
+		if (monthLoadController) {
+			try { monthLoadController.abort(); } catch (e) {}
 		}
-		$spinner.addClass('is-active');
+		monthLoadController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+		var signal = monthLoadController ? monthLoadController.signal : null;
+		var myToken = ++monthLoadToken;
 
-		beeper.getMediaMessages(currentChatId, currentCursor)
-			.then(function(result) {
+		var key = monthKey(year, month);
+		var $grid = $('#ctb-media-grid');
+		$('#ctb-load-more-wrap').hide();
+
+		var names = getMonthNames();
+		$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' +
+			sprintf(
+				/* translators: 1: month name, 2: year */
+				__('Loading %1$s %2$d…', 'chat-to-blog'),
+				names[month - 1], year
+			) + '</div>');
+
+		var monthStartMs = new Date(year, month - 1, 1).getTime();
+		var monthEndMs = new Date(year, month, 0, 23, 59, 59, 999).getTime();
+		var cursor = timelineScan && (key in timelineScan.boundaryCursors) ? timelineScan.boundaryCursors[key] : null;
+		var totalRendered = 0;
+		var maxBatches = 200;
+
+		try {
+			for (var i = 0; i < maxBatches; i++) {
+				if (myToken !== monthLoadToken) return;
+				var result = await beeper.getChatMessages(currentChatId, cursor, 'before', 500, signal);
+				if (myToken !== monthLoadToken || result.aborted) return;
 				if (!result.success) {
-					if (!append) {
+					if (totalRendered === 0) {
 						$grid.html('<p class="ctb-empty">' + sprintf(
 							/* translators: %s: error message */
-							__('Error loading media: %s', 'chat-to-blog'),
+							__('Error loading month: %s', 'chat-to-blog'),
 							result.error
 						) + '</p>');
 					}
 					return;
 				}
 
-				if (!append) {
-					$grid.empty();
-				}
-
-				var renderStats = renderMedia(result.data.items, $grid);
-				currentCursor = result.data.nextCursor;
-				$loadMore.toggle(result.data.hasMore);
-
-				if (result.data.stats) {
-					cumulativeStats.totalMessages += result.data.stats.totalMessages;
-					for (var type in result.data.stats.skippedTypes) {
-						cumulativeStats.skippedTypes[type] = (cumulativeStats.skippedTypes[type] || 0) + result.data.stats.skippedTypes[type];
+				var items = result.data.items || [];
+				var reachedOlder = false;
+				var newItems = [];
+				for (var j = 0; j < items.length; j++) {
+					var msg = items[j];
+					if (!isValidMessageTimestamp(msg)) continue;
+					var ts = new Date(msg.timestamp).getTime();
+					if (ts < monthStartMs) { reachedOlder = true; break; }
+					if (ts > monthEndMs) continue;
+					var attachments = msg.attachments || [];
+					for (var k = 0; k < attachments.length; k++) {
+						var att = attachments[k];
+						if (att.type !== 'img' && att.type !== 'video') continue;
+						newItems.push({
+							id: att.id,
+							mxcUrl: att.id,
+							timestamp: msg.timestamp,
+							text: msg.text || '',
+							sender: msg.senderName || (msg.isSender ? 'You' : 'Unknown'),
+							mimeType: att.mimeType,
+							fileName: att.fileName,
+							sortKey: msg.sortKey,
+							type: att.type
+						});
 					}
 				}
-				cumulativeStats.mediaRendered += renderStats.mediaRendered;
-				if (renderStats.skippedFileUrls > 0) {
-					cumulativeStats.skippedTypes['media unavailable'] = (cumulativeStats.skippedTypes['media unavailable'] || 0) + renderStats.skippedFileUrls;
+
+				// Append only the new items — don't re-render the whole grid.
+				// Re-rendering would detach still-in-flight thumbnails and
+				// strand their fetches on orphaned elements.
+				if (newItems.length > 0) {
+					if (totalRendered === 0) $grid.empty();
+					renderMedia(newItems, $grid);
+					totalRendered += newItems.length;
 				}
 
-				renderLoadStats(cumulativeStats, $stats);
-			})
-			.finally(function() {
-				$spinner.removeClass('is-active');
-			});
+				if (reachedOlder) break;
+				if (items.length === 0 || !result.data.hasMore) break;
+				var next = items[items.length - 1].sortKey;
+				if (next === cursor) break;
+				cursor = next;
+			}
+
+			if (myToken !== monthLoadToken) return;
+
+			if (totalRendered === 0) {
+				$grid.html('<p class="ctb-empty">' + __('No media in this month', 'chat-to-blog') + '</p>');
+			}
+		} catch (err) {
+			if (isAbortError(err)) return;
+			console.error(err);
+			$grid.html('<p class="ctb-empty">' + sprintf(
+				/* translators: %s: error message */
+				__('Error loading month: %s', 'chat-to-blog'),
+				err.message || String(err)
+			) + '</p>');
+		}
+	}
+
+	var loadMediaToken = 0;
+
+	function appendLoadMoreTile($grid) {
+		$grid.find('.ctb-load-more-tile').remove();
+		$grid.append(
+			'<button type="button" class="ctb-load-more-tile">' +
+				'<span class="ctb-load-more-tile-icon">+</span>' +
+				'<span class="ctb-load-more-tile-label">' + __('Load more', 'chat-to-blog') + '</span>' +
+				'<span class="spinner"></span>' +
+			'</button>'
+		);
+	}
+
+	async function loadMedia(append) {
+		if (!currentChatId) return;
+
+		var myToken = ++loadMediaToken;
+		var $grid = $('#ctb-media-grid');
+		var $loadMoreWrap = $('#ctb-load-more-wrap');
+		var $stats = $('#ctb-load-stats');
+
+		if (!append) {
+			$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Loading media...', 'chat-to-blog') + '</div>');
+			$stats.empty();
+			cumulativeStats = { totalMessages: 0, mediaRendered: 0, skippedTypes: {} };
+		} else {
+			$grid.find('.ctb-load-more-tile').addClass('ctb-load-more-tile-loading');
+		}
+
+		try {
+			var result = await beeper.getMediaMessages(currentChatId, currentCursor);
+			if (myToken !== loadMediaToken) return;
+			if (!result.success) {
+				if (!append) {
+					$grid.html('<p class="ctb-empty">' + sprintf(
+						/* translators: %s: error message */
+						__('Error loading media: %s', 'chat-to-blog'),
+						result.error
+					) + '</p>');
+				} else {
+					$grid.find('.ctb-load-more-tile').removeClass('ctb-load-more-tile-loading');
+				}
+				return;
+			}
+
+			if (!append) {
+				$grid.empty();
+			} else {
+				$grid.find('.ctb-load-more-tile').remove();
+			}
+
+			var renderStats = renderMedia(result.data.items, $grid);
+			currentCursor = result.data.nextCursor;
+
+			if (result.data.hasMore) {
+				appendLoadMoreTile($grid);
+			}
+			$loadMoreWrap.show();
+
+			if (result.data.stats) {
+				cumulativeStats.totalMessages += result.data.stats.totalMessages;
+				for (var type in result.data.stats.skippedTypes) {
+					cumulativeStats.skippedTypes[type] = (cumulativeStats.skippedTypes[type] || 0) + result.data.stats.skippedTypes[type];
+				}
+			}
+			cumulativeStats.mediaRendered += renderStats.mediaRendered;
+			if (renderStats.skippedFileUrls > 0) {
+				cumulativeStats.skippedTypes['media unavailable'] = (cumulativeStats.skippedTypes['media unavailable'] || 0) + renderStats.skippedFileUrls;
+			}
+			renderLoadStats(cumulativeStats, $stats);
+		} catch (err) {
+			if (isAbortError(err)) return;
+			console.error(err);
+			if (!append) {
+				$grid.html('<p class="ctb-empty">' + sprintf(
+					/* translators: %s: error message */
+					__('Error loading media: %s', 'chat-to-blog'),
+					err.message || String(err)
+				) + '</p>');
+			} else {
+				$grid.find('.ctb-load-more-tile').removeClass('ctb-load-more-tile-loading');
+			}
+		}
 	}
 
 	function renderLoadStats(stats, $container) {
@@ -481,6 +1095,7 @@
 	// Click on media item to add to selection
 	$(document).on('click', '.ctb-media-item', function() {
 		var $item = $(this);
+		if ($item.hasClass('ctb-media-failed')) return;
 		var media = $item.data('media');
 
 		var existingIndex = -1;

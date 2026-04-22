@@ -53,6 +53,14 @@ $categories = get_categories( [ 'hide_empty' => false ] );
 			<div class="ctb-two-column">
 			<div class="ctb-column-left">
 				<div class="ctb-panel">
+					<div id="ctb-timeline" class="ctb-timeline" style="display:none;">
+						<div class="ctb-timeline-header">
+							<span class="ctb-timeline-label"><?php esc_html_e( 'Jump to month', 'chat-to-blog' ); ?></span>
+							<span class="ctb-timeline-status"></span>
+							<button type="button" id="ctb-timeline-reset" class="button-link" style="display:none;"><?php esc_html_e( 'Back to latest', 'chat-to-blog' ); ?></button>
+						</div>
+						<div id="ctb-timeline-bars" class="ctb-timeline-bars"></div>
+					</div>
 					<div id="ctb-media-grid" class="ctb-media-grid">
 						<p class="ctb-hint"><?php esc_html_e( 'Select a chat above to browse media', 'chat-to-blog' ); ?></p>
 					</div>
@@ -63,10 +71,6 @@ $categories = get_categories( [ 'hide_empty' => false ] );
 						</div>
 						<div class="ctb-load-stats-row">
 							<span id="ctb-load-stats" class="ctb-load-stats"></span>
-							<span class="ctb-load-more-right">
-								<span class="spinner"></span>
-								<button type="button" id="ctb-load-more" class="button"><?php esc_html_e( 'Load More', 'chat-to-blog' ); ?></button>
-							</span>
 						</div>
 					</div>
 				</div>

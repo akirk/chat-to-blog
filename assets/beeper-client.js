@@ -77,7 +77,8 @@ class BeeperClient {
 					'Authorization': 'Bearer ' + this.token,
 					'Content-Type': 'application/json'
 				},
-				body: options.body ? JSON.stringify(options.body) : undefined
+				body: options.body ? JSON.stringify(options.body) : undefined,
+				signal: options.signal
 			});
 
 			const data = await response.json();
@@ -92,6 +93,9 @@ class BeeperClient {
 
 			return { success: true, data: data };
 		} catch (error) {
+			if (error && error.name === 'AbortError') {
+				return { success: false, error: 'aborted', aborted: true };
+			}
 			return {
 				success: false,
 				error: error.message || 'Failed to connect to Beeper',
@@ -129,14 +133,17 @@ class BeeperClient {
 		return this.request('/chats/' + encodeURIComponent(chatId));
 	}
 
-	async getChatMessages(chatId, cursor = null, direction = 'before') {
+	async getChatMessages(chatId, cursor = null, direction = 'before', limit = null, signal = null) {
 		const params = {};
+		if (limit) {
+			params.limit = limit;
+		}
 		if (cursor) {
 			params.cursor = cursor;
 			params.direction = direction;
 		}
 
-		return this.request('/chats/' + encodeURIComponent(chatId) + '/messages', { params: params });
+		return this.request('/chats/' + encodeURIComponent(chatId) + '/messages', { params: params, signal: signal });
 	}
 
 	async getMediaMessages(chatId, cursor = null) {
@@ -144,13 +151,14 @@ class BeeperClient {
 		let currentCursor = cursor;
 		let hasMore = true;
 		let batchCount = 0;
-		const maxBatches = 5;
+		const maxBatches = 3;
+		const batchLimit = 500;
 		let totalMessages = 0;
 		const skippedTypes = {};
 
 		while (hasMore && batchCount < maxBatches) {
 			batchCount++;
-			const result = await this.getChatMessages(chatId, currentCursor, 'before');
+			const result = await this.getChatMessages(chatId, currentCursor, 'before', batchLimit);
 
 			console.log('[CTB Debug] Batch', batchCount, '- cursor:', currentCursor, 'result:', result);
 
@@ -214,6 +222,82 @@ class BeeperClient {
 				}
 			}
 		};
+	}
+
+	/**
+	 * Scan the chat backwards in time, yielding each raw message batch.
+	 * Caller is expected to check for aborts (e.g. chat switch) between
+	 * yields.
+	 */
+	async *scanAllMessagesIterator(chatId, maxBatches = 20000, limit = 500) {
+		let cursor = null;
+		let prevCursor = null;
+		for (let i = 0; i < maxBatches; i++) {
+			const result = await this.getChatMessages(chatId, cursor, 'before', limit);
+			if (!result.success) {
+				yield { error: result.error };
+				return;
+			}
+			const items = result.data.items || [];
+			if (items.length === 0) return;
+			yield { items };
+			if (!result.data.hasMore) return;
+			const nextCursor = items[items.length - 1].sortKey;
+			if (nextCursor === prevCursor || nextCursor === cursor) {
+				// Guard against server returning the same cursor repeatedly.
+				return;
+			}
+			prevCursor = cursor;
+			cursor = nextCursor;
+		}
+	}
+
+	/**
+	 * Scan messages backwards until reaching the target date.
+	 *
+	 * Returns a cursor positioned so that the next getMediaMessages() call
+	 * fetches media on or before targetDate (a Date representing end-of-day).
+	 */
+	async jumpToDate(chatId, targetDate, onProgress = null) {
+		const targetMs = targetDate.getTime();
+		let currentCursor = null;
+		let scannedMessages = 0;
+		const maxBatches = 100;
+
+		for (let i = 0; i < maxBatches; i++) {
+			const result = await this.getChatMessages(chatId, currentCursor, 'before');
+			if (!result.success) return result;
+
+			const items = result.data.items || [];
+			if (items.length === 0) {
+				return { success: true, data: { cursor: currentCursor, reachedStart: true, scannedMessages } };
+			}
+
+			scannedMessages += items.length;
+			if (onProgress) onProgress({ scannedMessages, batch: i + 1 });
+
+			let boundary = -1;
+			for (let j = 0; j < items.length; j++) {
+				const ts = items[j].timestamp ? new Date(items[j].timestamp).getTime() : null;
+				if (ts !== null && ts <= targetMs) {
+					boundary = j;
+					break;
+				}
+			}
+
+			if (boundary === -1) {
+				if (!result.data.hasMore) {
+					return { success: true, data: { cursor: currentCursor, reachedStart: true, scannedMessages } };
+				}
+				currentCursor = items[items.length - 1].sortKey;
+				continue;
+			}
+
+			const nextCursor = boundary === 0 ? currentCursor : items[boundary - 1].sortKey;
+			return { success: true, data: { cursor: nextCursor, scannedMessages } };
+		}
+
+		return { success: false, error: `Could not locate target date within ${maxBatches} batches (scanned ${scannedMessages} messages)` };
 	}
 
 	async testConnection() {
