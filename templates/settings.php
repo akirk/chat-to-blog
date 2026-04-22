@@ -30,9 +30,9 @@ $token = $beeper->get_token();
 		<h2>
 			<?php esc_html_e( 'Beeper Connection', 'chat-to-blog' ); ?>
 			<?php if ( $is_configured ) : ?>
-				<span class="ctb-badge ctb-badge-success"><?php esc_html_e( 'Connected', 'chat-to-blog' ); ?></span>
+				<span id="ctb-connection-badge" class="ctb-badge ctb-badge-warning"><?php esc_html_e( 'Checking…', 'chat-to-blog' ); ?></span>
 			<?php else : ?>
-				<span class="ctb-badge ctb-badge-warning"><?php esc_html_e( 'Not configured', 'chat-to-blog' ); ?></span>
+				<span id="ctb-connection-badge" class="ctb-badge ctb-badge-warning"><?php esc_html_e( 'Not configured', 'chat-to-blog' ); ?></span>
 			<?php endif; ?>
 		</h2>
 

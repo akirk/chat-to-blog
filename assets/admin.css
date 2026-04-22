@@ -115,6 +115,11 @@
 	color: #856404;
 }
 
+.ctb-badge-error {
+	background: #f8d7da;
+	color: #721c24;
+}
+
 .ctb-chat-list {
 	list-style: none;
 	margin: 0;
