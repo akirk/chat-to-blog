@@ -332,6 +332,29 @@
 		return year + '-' + (month < 10 ? '0' + month : '' + month);
 	}
 
+	var TIMELINE_CACHE_TTL_MS = 60 * 60 * 1000;
+
+	function loadCachedTimeline(chatId) {
+		try {
+			var raw = localStorage.getItem('ctb_timeline_' + chatId);
+			if (!raw) return null;
+			var data = JSON.parse(raw);
+			if (!data || !data.ts || Date.now() - data.ts > TIMELINE_CACHE_TTL_MS) return null;
+			return data;
+		} catch (e) { return null; }
+	}
+
+	function saveCachedTimeline(chatId, scan) {
+		try {
+			localStorage.setItem('ctb_timeline_' + chatId, JSON.stringify({
+				ts: Date.now(),
+				counts: scan.counts,
+				boundaryCursors: scan.boundaryCursors,
+				scannedMessages: scan.scannedMessages
+			}));
+		} catch (e) {}
+	}
+
 	function startTimelineScan(chatId) {
 		if (timelineScan) timelineScan.aborted = true;
 
@@ -348,6 +371,22 @@
 
 		$('#ctb-timeline').show();
 		$('#ctb-timeline-bars').empty();
+
+		var cached = loadCachedTimeline(chatId);
+		if (cached) {
+			scan.counts = cached.counts || {};
+			scan.boundaryCursors = cached.boundaryCursors || {};
+			scan.scannedMessages = cached.scannedMessages || 0;
+			scan.complete = true;
+			renderTimeline(scan);
+			$('.ctb-timeline-status').text(sprintf(
+				/* translators: %d: message count from cached scan */
+				__('Cached history (%d messages)', 'chat-to-blog'),
+				scan.scannedMessages
+			));
+			return;
+		}
+
 		$('.ctb-timeline-status').text(__('Loading history…', 'chat-to-blog'));
 
 		(async function() {
@@ -378,6 +417,7 @@
 				}
 				if (scan.aborted || scan.chatId !== currentChatId) return;
 				scan.complete = true;
+				saveCachedTimeline(chatId, scan);
 				$('.ctb-timeline-status').text(sprintf(
 					/* translators: %d: total scanned message count */
 					__('Loaded full history (%d messages)', 'chat-to-blog'),
@@ -399,12 +439,12 @@
 		const lastYear = lastParts[0], lastMonth = lastParts[1];
 
 		const allMonths = [];
-		let y = firstYear, m = firstMonth;
-		while (y < lastYear || (y === lastYear && m <= lastMonth)) {
+		let y = lastYear, m = lastMonth;
+		while (y > firstYear || (y === firstYear && m >= firstMonth)) {
 			const key = monthKey(y, m);
 			allMonths.push({ key: key, year: y, month: m, count: scan.counts[key] || 0 });
-			m++;
-			if (m > 12) { m = 1; y++; }
+			m--;
+			if (m < 1) { m = 12; y--; }
 		}
 
 		let maxCount = 1;
@@ -412,10 +452,10 @@
 
 		const names = getMonthNames();
 		const $bars = $('#ctb-timeline-bars');
-		const wasAtEnd = $bars.length && ($bars[0].scrollLeft + $bars[0].clientWidth >= $bars[0].scrollWidth - 5);
 		$bars.empty();
 
-		allMonths.forEach(function(mo, idx) {
+		let prevYear = null;
+		allMonths.forEach(function(mo) {
 			const pct = mo.count > 0 ? Math.max(2, (mo.count / maxCount) * 100) : 0;
 			const tooltip = names[mo.month - 1] + ' ' + mo.year + ' · ' + sprintf(
 				/* translators: %d: number of messages in a given month */
@@ -427,15 +467,12 @@
 				.attr('data-month', mo.month)
 				.attr('title', tooltip);
 			$bar.append($('<span class="ctb-timeline-bar-fill">').css('height', pct + '%'));
-			if (mo.month === 1 || idx === 0) {
+			if (mo.year !== prevYear) {
 				$bar.append($('<span class="ctb-timeline-bar-year">').text(mo.year));
+				prevYear = mo.year;
 			}
 			$bars.append($bar);
 		});
-
-		if (wasAtEnd && $bars.length) {
-			$bars[0].scrollLeft = $bars[0].scrollWidth;
-		}
 	}
 
 	$(document).on('click', '.ctb-timeline-bar', function() {

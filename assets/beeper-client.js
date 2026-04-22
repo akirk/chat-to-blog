@@ -129,8 +129,11 @@ class BeeperClient {
 		return this.request('/chats/' + encodeURIComponent(chatId));
 	}
 
-	async getChatMessages(chatId, cursor = null, direction = 'before') {
+	async getChatMessages(chatId, cursor = null, direction = 'before', limit = null) {
 		const params = {};
+		if (limit) {
+			params.limit = limit;
+		}
 		if (cursor) {
 			params.cursor = cursor;
 			params.direction = direction;
@@ -221,10 +224,10 @@ class BeeperClient {
 	 * Caller is expected to check for aborts (e.g. chat switch) between
 	 * yields.
 	 */
-	async *scanAllMessagesIterator(chatId, maxBatches = 1000) {
+	async *scanAllMessagesIterator(chatId, maxBatches = 500, limit = 500) {
 		let cursor = null;
 		for (let i = 0; i < maxBatches; i++) {
-			const result = await this.getChatMessages(chatId, cursor, 'before');
+			const result = await this.getChatMessages(chatId, cursor, 'before', limit);
 			if (!result.success) {
 				yield { error: result.error };
 				return;
