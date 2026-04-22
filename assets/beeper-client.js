@@ -147,13 +147,14 @@ class BeeperClient {
 		let currentCursor = cursor;
 		let hasMore = true;
 		let batchCount = 0;
-		const maxBatches = 5;
+		const maxBatches = 3;
+		const batchLimit = 500;
 		let totalMessages = 0;
 		const skippedTypes = {};
 
 		while (hasMore && batchCount < maxBatches) {
 			batchCount++;
-			const result = await this.getChatMessages(chatId, currentCursor, 'before');
+			const result = await this.getChatMessages(chatId, currentCursor, 'before', batchLimit);
 
 			console.log('[CTB Debug] Batch', batchCount, '- cursor:', currentCursor, 'result:', result);
 

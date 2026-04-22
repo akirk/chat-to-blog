@@ -467,6 +467,7 @@
 				.attr('data-month', mo.month)
 				.attr('title', tooltip);
 			$bar.append($('<span class="ctb-timeline-bar-fill">').css('height', pct + '%'));
+			$bar.append($('<span class="ctb-timeline-bar-month">').text(names[mo.month - 1]));
 			if (mo.year !== prevYear) {
 				$bar.append($('<span class="ctb-timeline-bar-year">').text(mo.year));
 				prevYear = mo.year;
