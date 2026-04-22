@@ -71,10 +71,6 @@ $categories = get_categories( [ 'hide_empty' => false ] );
 						</div>
 						<div class="ctb-load-stats-row">
 							<span id="ctb-load-stats" class="ctb-load-stats"></span>
-							<span class="ctb-load-more-right">
-								<span class="spinner"></span>
-								<button type="button" id="ctb-load-more" class="button"><?php esc_html_e( 'Load More', 'chat-to-blog' ); ?></button>
-							</span>
 						</div>
 					</div>
 				</div>
