@@ -88,7 +88,9 @@
 	}
 
 	function isAbortError(err) {
-		return err && (err.name === 'AbortError' || /aborted/i.test(err.message || ''));
+		if (!err) return false;
+		if (err.isTimeout) return false;
+		return err.name === 'AbortError' || /aborted/i.test(err.message || '');
 	}
 
 	function processFetchQueue() {
@@ -108,28 +110,72 @@
 	}
 
 	function throttledFetch(url, options) {
-		var signal = viewAbortController ? viewAbortController.signal : null;
+		var viewSignal = viewAbortController ? viewAbortController.signal : null;
 		var onStart = options && options.onStart;
-		var mergedOptions = Object.assign({}, options || {}, signal ? { signal: signal } : {});
+		var timeoutMs = options && options.timeoutMs;
+		var mergedOptions = Object.assign({}, options || {});
 		delete mergedOptions.onStart;
+		delete mergedOptions.timeoutMs;
+
 		return new Promise(function(resolve, reject) {
+			if (viewSignal && viewSignal.aborted) {
+				reject(new DOMException('Aborted', 'AbortError'));
+				return;
+			}
+
+			var perFetchController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+			var timedOut = false;
+			var viewAborted = false;
+			var timeoutId = null;
+
+			var onViewAbort = function() {
+				viewAborted = true;
+				if (perFetchController) perFetchController.abort();
+			};
+			if (viewSignal) viewSignal.addEventListener('abort', onViewAbort);
+
+			var cleanup = function() {
+				if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+				if (viewSignal) viewSignal.removeEventListener('abort', onViewAbort);
+			};
+
 			var item = {
-				reject: reject,
+				reject: function(err) { cleanup(); reject(err); },
 				run: function() {
-					if (signal && signal.aborted) {
+					if (perFetchController && perFetchController.signal.aborted) {
+						cleanup();
 						reject(new DOMException('Aborted', 'AbortError'));
 						return Promise.resolve();
 					}
 					if (typeof onStart === 'function') {
 						try { onStart(); } catch (e) {}
 					}
-					return fetch(url, mergedOptions).then(resolve, reject);
+
+					if (timeoutMs && perFetchController) {
+						timeoutId = setTimeout(function() {
+							timedOut = true;
+							perFetchController.abort();
+						}, timeoutMs);
+					}
+
+					var fetchOpts = Object.assign({}, mergedOptions);
+					if (perFetchController) fetchOpts.signal = perFetchController.signal;
+
+					return fetch(url, fetchOpts)
+						.then(function(response) { cleanup(); resolve(response); })
+						.catch(function(err) {
+							cleanup();
+							if (timedOut && !viewAborted) {
+								var timeoutErr = new Error('Request timed out after ' + timeoutMs + 'ms');
+								timeoutErr.isTimeout = true;
+								reject(timeoutErr);
+							} else {
+								reject(err);
+							}
+						});
 				}
 			};
-			if (signal && signal.aborted) {
-				reject(new DOMException('Aborted', 'AbortError'));
-				return;
-			}
+
 			fetchQueue.push(item);
 			processFetchQueue();
 		});
@@ -157,15 +203,25 @@
 		}).then(function(err) { throw err; });
 	}
 
+	var MEDIA_FETCH_TIMEOUT_MS = 5000;
+
 	function fetchBlob(mediaUrl, onStart) {
 		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
 		return throttledFetch(url, {
 			headers: { 'Authorization': 'Bearer ' + config.beeperToken },
-			onStart: onStart
+			onStart: onStart,
+			timeoutMs: MEDIA_FETCH_TIMEOUT_MS
 		}).then(function(response) {
 			notifyFetchOutcome(response.status);
 			if (!response.ok) return parseFetchError(response);
 			return response.blob();
+		}).catch(function(err) {
+			if (err && err.isTimeout) {
+				// Treat a timeout as the same stress signal as a 502 so the
+				// queue backs off instead of piling more slow requests on.
+				notifyFetchOutcome(502);
+			}
+			throw err;
 		});
 	}
 
