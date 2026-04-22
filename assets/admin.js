@@ -304,11 +304,74 @@
 
 		currentChatId = chat.id;
 		currentCursor = null;
+		$('#ctb-jump-to-date').show();
+		$('#ctb-jump-reset').hide();
+		$('.ctb-jump-status').empty();
 		loadMedia(false);
 	});
 
 	$('#ctb-load-more').on('click', function() {
 		loadMedia(true);
+	});
+
+	$('#ctb-jump-btn').on('click', function() {
+		var dateStr = $('#ctb-jump-date').val();
+		if (!dateStr || !currentChatId) return;
+
+		var parts = dateStr.split('-');
+		var targetDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59, 999);
+
+		var $btn = $(this);
+		var $status = $('.ctb-jump-status');
+		var $grid = $('#ctb-media-grid');
+
+		$btn.prop('disabled', true);
+		$status.text(__('Searching…', 'chat-to-blog'));
+		$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Scanning messages…', 'chat-to-blog') + '</div>');
+
+		beeper.jumpToDate(currentChatId, targetDate, function(progress) {
+			$status.text(sprintf(
+				/* translators: %d: number of messages scanned */
+				__('Scanned %d messages…', 'chat-to-blog'),
+				progress.scannedMessages
+			));
+		})
+			.then(function(result) {
+				if (!result.success) {
+					$status.text(result.error);
+					return;
+				}
+
+				if (result.data.reachedStart) {
+					$status.text(__('Reached the start of the chat.', 'chat-to-blog'));
+				} else {
+					$status.text(sprintf(
+						/* translators: 1: formatted date, 2: number of messages scanned */
+						__('Jumped to %1$s (scanned %2$d messages).', 'chat-to-blog'),
+						targetDate.toLocaleDateString(),
+						result.data.scannedMessages || 0
+					));
+				}
+
+				currentCursor = result.data.cursor;
+				$('#ctb-jump-reset').show();
+				loadMedia(false);
+			})
+			.catch(function(err) {
+				$status.text(err.message || String(err));
+			})
+			.finally(function() {
+				$btn.prop('disabled', false);
+			});
+	});
+
+	$('#ctb-jump-reset').on('click', function() {
+		if (!currentChatId) return;
+		currentCursor = null;
+		$('.ctb-jump-status').empty();
+		$('#ctb-jump-date').val('');
+		$(this).hide();
+		loadMedia(false);
 	});
 
 	function loadMedia(append) {

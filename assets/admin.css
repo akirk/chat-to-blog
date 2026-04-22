@@ -204,6 +204,33 @@
 	min-height: 200px;
 }
 
+.ctb-jump-to-date {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 15px 0;
+	padding: 10px 15px;
+	background: #f9f9f9;
+	border-radius: 4px;
+	font-size: 13px;
+	flex-wrap: wrap;
+}
+
+.ctb-jump-to-date label {
+	color: #555;
+	font-weight: 500;
+}
+
+.ctb-jump-to-date input[type="date"] {
+	padding: 3px 6px;
+}
+
+.ctb-jump-status {
+	color: #666;
+	font-size: 12px;
+	margin-left: 6px;
+}
+
 .ctb-media-item {
 	position: relative;
 	aspect-ratio: 1;

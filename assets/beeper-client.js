@@ -216,6 +216,54 @@ class BeeperClient {
 		};
 	}
 
+	/**
+	 * Scan messages backwards until reaching the target date.
+	 *
+	 * Returns a cursor positioned so that the next getMediaMessages() call
+	 * fetches media on or before targetDate (a Date representing end-of-day).
+	 */
+	async jumpToDate(chatId, targetDate, onProgress = null) {
+		const targetMs = targetDate.getTime();
+		let currentCursor = null;
+		let scannedMessages = 0;
+		const maxBatches = 100;
+
+		for (let i = 0; i < maxBatches; i++) {
+			const result = await this.getChatMessages(chatId, currentCursor, 'before');
+			if (!result.success) return result;
+
+			const items = result.data.items || [];
+			if (items.length === 0) {
+				return { success: true, data: { cursor: currentCursor, reachedStart: true, scannedMessages } };
+			}
+
+			scannedMessages += items.length;
+			if (onProgress) onProgress({ scannedMessages, batch: i + 1 });
+
+			let boundary = -1;
+			for (let j = 0; j < items.length; j++) {
+				const ts = items[j].timestamp ? new Date(items[j].timestamp).getTime() : null;
+				if (ts !== null && ts <= targetMs) {
+					boundary = j;
+					break;
+				}
+			}
+
+			if (boundary === -1) {
+				if (!result.data.hasMore) {
+					return { success: true, data: { cursor: currentCursor, reachedStart: true, scannedMessages } };
+				}
+				currentCursor = items[items.length - 1].sortKey;
+				continue;
+			}
+
+			const nextCursor = boundary === 0 ? currentCursor : items[boundary - 1].sortKey;
+			return { success: true, data: { cursor: nextCursor, scannedMessages } };
+		}
+
+		return { success: false, error: `Could not locate target date within ${maxBatches} batches (scanned ${scannedMessages} messages)` };
+	}
+
 	async testConnection() {
 		const result = await this.getAccounts();
 
