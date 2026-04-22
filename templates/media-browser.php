@@ -31,15 +31,26 @@ $categories = get_categories( [ 'hide_empty' => false ] );
 			</a>
 		</div>
 	<?php else : ?>
-		<div class="ctb-chat-bar">
-			<div class="ctb-chat-bar-inner">
-				<div id="ctb-chat-list" class="ctb-chat-list-horizontal">
-					<span class="spinner is-active"></span> <?php esc_html_e( 'Loading chats...', 'chat-to-blog' ); ?>
-				</div>
-			</div>
+		<div id="ctb-connection-error" class="ctb-setup-needed" style="display:none;">
+			<div class="ctb-setup-icon">🔌</div>
+			<h2><?php esc_html_e( 'Can’t reach Beeper Desktop', 'chat-to-blog' ); ?></h2>
+			<p><?php esc_html_e( 'The Beeper Desktop API only listens on localhost, so this page needs to be open on the same machine where Beeper Desktop is running. Make sure Beeper Desktop is running, then try again.', 'chat-to-blog' ); ?></p>
+			<p>
+				<button type="button" id="ctb-retry-connection" class="button button-primary"><?php esc_html_e( 'Retry', 'chat-to-blog' ); ?></button>
+				<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="button"><?php esc_html_e( 'View setup guide', 'chat-to-blog' ); ?></a>
+			</p>
 		</div>
 
-		<div class="ctb-two-column">
+		<div id="ctb-main-ui">
+			<div class="ctb-chat-bar">
+				<div class="ctb-chat-bar-inner">
+					<div id="ctb-chat-list" class="ctb-chat-list-horizontal">
+						<span class="spinner is-active"></span> <?php esc_html_e( 'Loading chats...', 'chat-to-blog' ); ?>
+					</div>
+				</div>
+			</div>
+
+			<div class="ctb-two-column">
 			<div class="ctb-column-left">
 				<div class="ctb-panel">
 					<div id="ctb-media-grid" class="ctb-media-grid">
@@ -125,6 +136,7 @@ $categories = get_categories( [ 'hide_empty' => false ] );
 					</div>
 				</div>
 			</div>
+		</div>
 		</div>
 	<?php endif; ?>
 </div>

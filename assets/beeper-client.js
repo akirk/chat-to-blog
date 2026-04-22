@@ -94,7 +94,8 @@ class BeeperClient {
 		} catch (error) {
 			return {
 				success: false,
-				error: error.message || 'Failed to connect to Beeper'
+				error: error.message || 'Failed to connect to Beeper',
+				isConnectionError: true
 			};
 		}
 	}

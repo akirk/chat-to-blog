@@ -213,6 +213,22 @@
 			});
 	});
 
+	function probeConnectionBadge() {
+		var $badge = $('#ctb-connection-badge');
+		if (!$badge.length || !config.beeperToken) return;
+
+		beeper.getAccounts().then(function(result) {
+			$badge.removeClass('ctb-badge-success ctb-badge-warning ctb-badge-error');
+			if (result.success) {
+				$badge.addClass('ctb-badge-success').text(__('Connected', 'chat-to-blog'));
+			} else if (result.isConnectionError) {
+				$badge.addClass('ctb-badge-error').text(__('Not reachable from this device', 'chat-to-blog'));
+			} else {
+				$badge.addClass('ctb-badge-warning').text(__('Connection failed', 'chat-to-blog'));
+			}
+		});
+	}
+
 	// Media Browser
 
 	$(document).ready(function() {
@@ -220,6 +236,7 @@
 			loadChatList();
 			restoreFormatPreference();
 		}
+		probeConnectionBadge();
 	});
 
 	function restoreFormatPreference() {
@@ -234,10 +251,17 @@
 	});
 
 	function loadChatList() {
+		$('#ctb-connection-error').hide();
+		$('#ctb-main-ui').show();
+		$('#ctb-chat-list').html('<span class="spinner is-active"></span> ' + __('Loading chats...', 'chat-to-blog'));
+
 		beeper.getAllChats()
 			.then(function(result) {
 				if (result.success) {
 					renderChatList(result.data.items || []);
+				} else if (result.isConnectionError) {
+					$('#ctb-main-ui').hide();
+					$('#ctb-connection-error').show();
 				} else {
 					$('#ctb-chat-list').html('<span class="ctb-error">' + sprintf(
 						/* translators: %s: error message */
@@ -247,6 +271,10 @@
 				}
 			});
 	}
+
+	$(document).on('click', '#ctb-retry-connection', function() {
+		loadChatList();
+	});
 
 	function renderChatList(chats) {
 		var $list = $('#ctb-chat-list');

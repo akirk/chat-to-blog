@@ -30,22 +30,35 @@ $token = $beeper->get_token();
 		<h2>
 			<?php esc_html_e( 'Beeper Connection', 'chat-to-blog' ); ?>
 			<?php if ( $is_configured ) : ?>
-				<span class="ctb-badge ctb-badge-success"><?php esc_html_e( 'Connected', 'chat-to-blog' ); ?></span>
+				<span id="ctb-connection-badge" class="ctb-badge ctb-badge-warning"><?php esc_html_e( 'Checking…', 'chat-to-blog' ); ?></span>
 			<?php else : ?>
-				<span class="ctb-badge ctb-badge-warning"><?php esc_html_e( 'Not configured', 'chat-to-blog' ); ?></span>
+				<span id="ctb-connection-badge" class="ctb-badge ctb-badge-warning"><?php esc_html_e( 'Not configured', 'chat-to-blog' ); ?></span>
 			<?php endif; ?>
 		</h2>
 
 		<p><?php esc_html_e( 'Connect to Beeper Desktop to access your group chat media.', 'chat-to-blog' ); ?></p>
 
 		<div class="ctb-instructions">
-			<strong><?php esc_html_e( 'To get your API token:', 'chat-to-blog' ); ?></strong>
+			<strong><?php esc_html_e( 'To enable the API and get a token:', 'chat-to-blog' ); ?></strong>
 			<ol>
 				<li><?php echo wp_kses( __( 'Make sure <strong>Beeper Desktop</strong> is running on this computer', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
 				<li><?php echo wp_kses( __( 'Open Beeper Desktop and go to <strong>Settings</strong> (gear icon)', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
 				<li><?php echo wp_kses( __( 'Click <strong>Developers</strong> in the sidebar', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
-				<li><?php echo wp_kses( __( 'Scroll to <strong>Approved connections</strong> and click the <strong>+</strong> button', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
+				<li><?php echo wp_kses( __( 'Turn on the <strong>Beeper Desktop API</strong> toggle (the API starts on <code>localhost:23373</code>)', 'chat-to-blog' ), [ 'strong' => [], 'code' => [] ] ); ?></li>
+				<li><?php echo wp_kses( __( 'Scroll to <strong>Approved connections</strong> and click the <strong>+</strong> button to generate a token', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
 			</ol>
+			<p>
+				<?php
+				echo wp_kses(
+					sprintf(
+						/* translators: %s: link to Beeper Desktop API docs */
+						__( 'More details in the %s.', 'chat-to-blog' ),
+						'<a href="https://developers.beeper.com/desktop-api/" target="_blank" rel="noopener">' . esc_html__( 'Beeper Desktop API docs', 'chat-to-blog' ) . '</a>'
+					),
+					[ 'a' => [ 'href' => [], 'target' => [], 'rel' => [] ] ]
+				);
+				?>
+			</p>
 		</div>
 
 		<form id="ctb-token-form">
