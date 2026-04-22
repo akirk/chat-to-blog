@@ -203,7 +203,7 @@
 		}).then(function(err) { throw err; });
 	}
 
-	var MEDIA_FETCH_TIMEOUT_MS = 1000;
+	var MEDIA_FETCH_TIMEOUT_MS = 300;
 
 	function fetchBlob(mediaUrl, onStart) {
 		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
