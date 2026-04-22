@@ -57,7 +57,7 @@
 
 	var fetchQueue = [];
 	var activeFetches = 0;
-	var MAX_CONCURRENT_FETCHES = 4;
+	var MAX_CONCURRENT_FETCHES = 2;
 	var viewAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
 
 	function abortPendingViewFetches() {
@@ -187,26 +187,31 @@
 	}
 
 	function clearMediaErrorState($item) {
-		$item.removeClass('ctb-media-unavailable');
+		$item.removeClass('ctb-media-unavailable ctb-media-failed');
 		$item.find('.ctb-retry-btn, .ctb-unavailable-overlay').remove();
 	}
 
 	function attachMediaErrorState($item, err, onRetry) {
 		clearMediaErrorState($item);
+		$item.addClass('ctb-media-failed');
+
 		if (err.permanent) {
 			$item.addClass('ctb-media-unavailable');
 			var title = err.detail || __('Media no longer available on server', 'chat-to-blog');
 			$item.append($('<div class="ctb-unavailable-overlay">').attr('title', title).text('🚫'));
-		} else {
-			var $retry = $('<button type="button" class="ctb-retry-btn">')
-				.attr('title', __('Retry', 'chat-to-blog'))
-				.text('↻');
-			$retry.on('click', function(e) {
-				e.stopPropagation();
-				onRetry();
-			});
-			$item.append($retry);
 		}
+
+		// Always expose a retry button, even on "permanent" errors — the
+		// server sometimes reports the asset as gone transiently, so let
+		// the user force another attempt rather than giving up silently.
+		var $retry = $('<button type="button" class="ctb-retry-btn">')
+			.attr('title', err.permanent ? __('Retry anyway', 'chat-to-blog') : __('Retry', 'chat-to-blog'))
+			.text('↻');
+		$retry.on('click', function(e) {
+			e.stopPropagation();
+			onRetry();
+		});
+		$item.append($retry);
 	}
 
 	function loadImage($img, mxcUrl) {
@@ -964,6 +969,7 @@
 	// Click on media item to add to selection
 	$(document).on('click', '.ctb-media-item', function() {
 		var $item = $(this);
+		if ($item.hasClass('ctb-media-failed')) return;
 		var media = $item.data('media');
 
 		var existingIndex = -1;
