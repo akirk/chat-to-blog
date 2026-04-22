@@ -57,7 +57,7 @@
 
 	var fetchQueue = [];
 	var activeFetches = 0;
-	var MAX_CONCURRENT_FETCHES = 2;
+	var MAX_CONCURRENT_FETCHES = 1;
 	var queuePausedUntil = 0;
 	var consecutive502s = 0;
 	var viewAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
@@ -203,7 +203,7 @@
 		}).then(function(err) { throw err; });
 	}
 
-	var MEDIA_FETCH_TIMEOUT_MS = 5000;
+	var MEDIA_FETCH_TIMEOUT_MS = 1000;
 
 	function fetchBlob(mediaUrl, onStart) {
 		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
