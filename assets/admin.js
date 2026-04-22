@@ -238,6 +238,12 @@
 			.then(function(result) {
 				if (result.success) {
 					renderChatList(result.data.items || []);
+				} else if (result.isConnectionError) {
+					$('#ctb-chat-list').html(
+						'<span class="ctb-error">' +
+						__('Can’t reach Beeper Desktop. It only listens on localhost, so you need to open this page on the machine where Beeper Desktop is running.', 'chat-to-blog') +
+						'</span>'
+					);
 				} else {
 					$('#ctb-chat-list').html('<span class="ctb-error">' + sprintf(
 						/* translators: %s: error message */
