@@ -685,7 +685,7 @@
 		var monthStartMs = new Date(year, month - 1, 1).getTime();
 		var monthEndMs = new Date(year, month, 0, 23, 59, 59, 999).getTime();
 		var cursor = timelineScan && (key in timelineScan.boundaryCursors) ? timelineScan.boundaryCursors[key] : null;
-		var mediaItems = [];
+		var totalRendered = 0;
 		var maxBatches = 200;
 
 		try {
@@ -694,16 +694,19 @@
 				var result = await beeper.getChatMessages(currentChatId, cursor, 'before', 500, signal);
 				if (myToken !== monthLoadToken || result.aborted) return;
 				if (!result.success) {
-					$grid.html('<p class="ctb-empty">' + sprintf(
-						/* translators: %s: error message */
-						__('Error loading month: %s', 'chat-to-blog'),
-						result.error
-					) + '</p>');
+					if (totalRendered === 0) {
+						$grid.html('<p class="ctb-empty">' + sprintf(
+							/* translators: %s: error message */
+							__('Error loading month: %s', 'chat-to-blog'),
+							result.error
+						) + '</p>');
+					}
 					return;
 				}
 
 				var items = result.data.items || [];
 				var reachedOlder = false;
+				var newItems = [];
 				for (var j = 0; j < items.length; j++) {
 					var msg = items[j];
 					if (!isValidMessageTimestamp(msg)) continue;
@@ -714,7 +717,7 @@
 					for (var k = 0; k < attachments.length; k++) {
 						var att = attachments[k];
 						if (att.type !== 'img' && att.type !== 'video') continue;
-						mediaItems.push({
+						newItems.push({
 							id: att.id,
 							mxcUrl: att.id,
 							timestamp: msg.timestamp,
@@ -728,10 +731,13 @@
 					}
 				}
 
-				// Progressive render so the user sees results as they come in.
-				if (mediaItems.length > 0) {
-					$grid.empty();
-					renderMedia(mediaItems, $grid);
+				// Append only the new items — don't re-render the whole grid.
+				// Re-rendering would detach still-in-flight thumbnails and
+				// strand their fetches on orphaned elements.
+				if (newItems.length > 0) {
+					if (totalRendered === 0) $grid.empty();
+					renderMedia(newItems, $grid);
+					totalRendered += newItems.length;
 				}
 
 				if (reachedOlder) break;
@@ -743,7 +749,7 @@
 
 			if (myToken !== monthLoadToken) return;
 
-			if (mediaItems.length === 0) {
+			if (totalRendered === 0) {
 				$grid.html('<p class="ctb-empty">' + __('No media in this month', 'chat-to-blog') + '</p>');
 			}
 		} catch (err) {
