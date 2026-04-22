@@ -58,7 +58,22 @@
 	var fetchQueue = [];
 	var activeFetches = 0;
 	var MAX_CONCURRENT_FETCHES = 2;
+	var queuePausedUntil = 0;
+	var consecutive502s = 0;
 	var viewAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+
+	// When Beeper's proxy starts returning 502 it usually keeps doing so
+	// for a short window. Back off exponentially on consecutive 502s so we
+	// don't keep hammering the queue into the ground.
+	function notifyFetchOutcome(status) {
+		if (status === 502 || status === 503 || status === 504) {
+			consecutive502s = Math.min(consecutive502s + 1, 5);
+			var backoffMs = Math.min(3000, 400 * Math.pow(2, consecutive502s - 1)); // 400, 800, 1600, 3000, 3000
+			queuePausedUntil = Math.max(queuePausedUntil, Date.now() + backoffMs);
+		} else if (status >= 200 && status < 300) {
+			consecutive502s = 0;
+		}
+	}
 
 	function abortPendingViewFetches() {
 		if (viewAbortController) {
@@ -77,6 +92,11 @@
 	}
 
 	function processFetchQueue() {
+		var now = Date.now();
+		if (now < queuePausedUntil) {
+			setTimeout(processFetchQueue, queuePausedUntil - now);
+			return;
+		}
 		while (activeFetches < MAX_CONCURRENT_FETCHES && fetchQueue.length > 0) {
 			var next = fetchQueue.shift();
 			activeFetches++;
@@ -143,6 +163,7 @@
 			headers: { 'Authorization': 'Bearer ' + config.beeperToken },
 			onStart: onStart
 		}).then(function(response) {
+			notifyFetchOutcome(response.status);
 			if (!response.ok) return parseFetchError(response);
 			return response.blob();
 		});
