@@ -55,7 +55,76 @@
 		});
 	}
 
-	// Fetch media directly from Beeper API and return as data URL
+	var fetchQueue = [];
+	var activeFetches = 0;
+	var MAX_CONCURRENT_FETCHES = 4;
+
+	function processFetchQueue() {
+		while (activeFetches < MAX_CONCURRENT_FETCHES && fetchQueue.length > 0) {
+			var next = fetchQueue.shift();
+			activeFetches++;
+			next().finally(function() {
+				activeFetches--;
+				processFetchQueue();
+			});
+		}
+	}
+
+	function throttledFetch(url, options) {
+		return new Promise(function(resolve, reject) {
+			fetchQueue.push(function() {
+				return fetch(url, options).then(resolve, reject);
+			});
+			processFetchQueue();
+		});
+	}
+
+	// Parse Beeper error body and turn it into a structured Error whose
+	// `.permanent` flag distinguishes "attachment not found" (no point
+	// retrying) from transient failures (502 from overload, etc).
+	function parseFetchError(response) {
+		return response.text().then(function(body) {
+			var err = new Error('Media fetch error: ' + response.status);
+			err.status = response.status;
+			try {
+				var parsed = JSON.parse(body);
+				err.code = parsed.code;
+				err.detail = parsed.message;
+				err.permanent = parsed.code === 'SERVE_ASSET_ERROR' &&
+					/not found|no longer available/i.test(parsed.message || '');
+			} catch (e) {}
+			return err;
+		}).catch(function() {
+			var err = new Error('Media fetch error: ' + response.status);
+			err.status = response.status;
+			return err;
+		}).then(function(err) { throw err; });
+	}
+
+	function fetchBlob(mediaUrl) {
+		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
+		return throttledFetch(url, {
+			headers: { 'Authorization': 'Bearer ' + config.beeperToken }
+		}).then(function(response) {
+			if (!response.ok) return parseFetchError(response);
+			return response.blob();
+		});
+	}
+
+	function fetchBlobWithRetry(mediaUrl, retriesLeft) {
+		return fetchBlob(mediaUrl).catch(function(err) {
+			if (retriesLeft > 0 && !err.permanent) {
+				return new Promise(function(resolve, reject) {
+					setTimeout(function() {
+						fetchBlobWithRetry(mediaUrl, retriesLeft - 1).then(resolve, reject);
+					}, 600);
+				});
+			}
+			throw err;
+		});
+	}
+
+	// Fetch media via Beeper and return as data URL (cached on success).
 	function fetchImageAsDataUrl(mediaUrl) {
 		if (config.demoMode && config.placeholderImage && !demoIsWhitelisted(mediaUrl)) {
 			return Promise.resolve(config.placeholderImage);
@@ -65,33 +134,46 @@
 			return Promise.resolve(imageCache[mediaUrl]);
 		}
 
-		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
-
-		return fetch(url, {
-			headers: {
-				'Authorization': 'Bearer ' + config.beeperToken
-			}
-		})
-			.then(function(response) {
-				if (!response.ok) throw new Error('Media fetch error: ' + response.status);
-				return response.blob();
-			})
-			.then(function(blob) {
-				return new Promise(function(resolve) {
-					var reader = new FileReader();
-					reader.onloadend = function() {
-						imageCache[mediaUrl] = reader.result;
-						resolve(reader.result);
-					};
-					reader.readAsDataURL(blob);
-				});
+		return fetchBlobWithRetry(mediaUrl, 1).then(function(blob) {
+			return new Promise(function(resolve) {
+				var reader = new FileReader();
+				reader.onloadend = function() {
+					imageCache[mediaUrl] = reader.result;
+					resolve(reader.result);
+				};
+				reader.readAsDataURL(blob);
 			});
+		});
 	}
 
-	// Load image into an img element
+	function clearMediaErrorState($item) {
+		$item.removeClass('ctb-media-unavailable');
+		$item.find('.ctb-retry-btn, .ctb-unavailable-overlay').remove();
+	}
+
+	function attachMediaErrorState($item, err, onRetry) {
+		clearMediaErrorState($item);
+		if (err.permanent) {
+			$item.addClass('ctb-media-unavailable');
+			var title = err.detail || __('Media no longer available on server', 'chat-to-blog');
+			$item.append($('<div class="ctb-unavailable-overlay">').attr('title', title).text('🚫'));
+		} else {
+			var $retry = $('<button type="button" class="ctb-retry-btn">')
+				.attr('title', __('Retry', 'chat-to-blog'))
+				.text('↻');
+			$retry.on('click', function(e) {
+				e.stopPropagation();
+				onRetry();
+			});
+			$item.append($retry);
+		}
+	}
+
 	function loadImage($img, mxcUrl) {
 		$img.attr('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'); // 1px placeholder
-		$img.addClass('ctb-loading');
+		$img.addClass('ctb-loading').removeClass('ctb-error');
+		var $item = $img.closest('.ctb-media-item, .ctb-selected-thumb');
+		clearMediaErrorState($item);
 
 		fetchImageAsDataUrl(mxcUrl)
 			.then(function(dataUrl) {
@@ -99,41 +181,35 @@
 				$img.removeClass('ctb-loading');
 			})
 			.catch(function(err) {
-				console.error('Failed to load image:', err);
-				$img.addClass('ctb-error');
-				$img.removeClass('ctb-loading');
+				console.warn('Failed to load image:', err);
+				$img.addClass('ctb-error').removeClass('ctb-loading');
+				attachMediaErrorState($item, err, function() {
+					loadImage($img, mxcUrl);
+				});
 			});
 	}
 
-	// Load video into a video element
 	function loadVideo($video, mxcUrl) {
 		if (config.demoMode && config.placeholderImage && !demoIsWhitelisted(mxcUrl)) {
 			$video.replaceWith($('<img>').attr({ src: config.placeholderImage, alt: '' }).addClass('ctb-demo-placeholder'));
 			return;
 		}
 
-		$video.addClass('ctb-loading');
+		$video.addClass('ctb-loading').removeClass('ctb-error');
+		var $item = $video.closest('.ctb-media-item, .ctb-selected-thumb');
+		clearMediaErrorState($item);
 
-		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mxcUrl);
-
-		fetch(url, {
-			headers: {
-				'Authorization': 'Bearer ' + config.beeperToken
-			}
-		})
-			.then(function(response) {
-				if (!response.ok) throw new Error('Video fetch error: ' + response.status);
-				return response.blob();
-			})
+		fetchBlobWithRetry(mxcUrl, 1)
 			.then(function(blob) {
-				var objectUrl = URL.createObjectURL(blob);
-				$video.attr('src', objectUrl);
+				$video.attr('src', URL.createObjectURL(blob));
 				$video.removeClass('ctb-loading');
 			})
 			.catch(function(err) {
-				console.error('Failed to load video:', err);
-				$video.addClass('ctb-error');
-				$video.removeClass('ctb-loading');
+				console.warn('Failed to load video:', err);
+				$video.addClass('ctb-error').removeClass('ctb-loading');
+				attachMediaErrorState($item, err, function() {
+					loadVideo($video, mxcUrl);
+				});
 			});
 	}
 

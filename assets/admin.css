@@ -335,6 +335,46 @@
 	background: #f5e6e6;
 }
 
+.ctb-retry-btn {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 44px;
+	height: 44px;
+	border-radius: 50%;
+	border: none;
+	background: rgba(0, 0, 0, 0.75);
+	color: #fff;
+	font-size: 22px;
+	line-height: 1;
+	cursor: pointer;
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.ctb-retry-btn:hover {
+	background: rgba(0, 0, 0, 0.9);
+}
+
+.ctb-media-unavailable {
+	opacity: 0.5;
+	filter: grayscale(1);
+}
+
+.ctb-unavailable-overlay {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	font-size: 28px;
+	pointer-events: none;
+	z-index: 5;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
 .ctb-media-item .ctb-check {
 	position: absolute;
 	top: 8px;
