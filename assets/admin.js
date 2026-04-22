@@ -304,9 +304,8 @@
 
 		currentChatId = chat.id;
 		currentCursor = null;
-		$('#ctb-jump-to-date').show();
-		$('#ctb-jump-reset').hide();
-		$('.ctb-jump-status').empty();
+		$('#ctb-timeline-reset').hide();
+		startTimelineScan(chat.id);
 		loadMedia(false);
 	});
 
@@ -314,62 +313,166 @@
 		loadMedia(true);
 	});
 
-	$('#ctb-jump-btn').on('click', function() {
-		var dateStr = $('#ctb-jump-date').val();
-		if (!dateStr || !currentChatId) return;
+	var timelineScan = null;
+	var monthNames = null;
 
-		var parts = dateStr.split('-');
-		var targetDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59, 999);
+	function getMonthNames() {
+		if (!monthNames) {
+			monthNames = [
+				__('Jan', 'chat-to-blog'), __('Feb', 'chat-to-blog'), __('Mar', 'chat-to-blog'),
+				__('Apr', 'chat-to-blog'), __('May', 'chat-to-blog'), __('Jun', 'chat-to-blog'),
+				__('Jul', 'chat-to-blog'), __('Aug', 'chat-to-blog'), __('Sep', 'chat-to-blog'),
+				__('Oct', 'chat-to-blog'), __('Nov', 'chat-to-blog'), __('Dec', 'chat-to-blog')
+			];
+		}
+		return monthNames;
+	}
 
-		var $btn = $(this);
-		var $status = $('.ctb-jump-status');
-		var $grid = $('#ctb-media-grid');
+	function monthKey(year, month) {
+		return year + '-' + (month < 10 ? '0' + month : '' + month);
+	}
 
-		$btn.prop('disabled', true);
-		$status.text(__('Searching…', 'chat-to-blog'));
-		$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Scanning messages…', 'chat-to-blog') + '</div>');
+	function startTimelineScan(chatId) {
+		if (timelineScan) timelineScan.aborted = true;
 
-		beeper.jumpToDate(currentChatId, targetDate, function(progress) {
-			$status.text(sprintf(
-				/* translators: %d: number of messages scanned */
-				__('Scanned %d messages…', 'chat-to-blog'),
-				progress.scannedMessages
-			));
-		})
-			.then(function(result) {
-				if (!result.success) {
-					$status.text(result.error);
-					return;
-				}
+		var scan = {
+			chatId: chatId,
+			aborted: false,
+			counts: {},
+			boundaryCursors: {},
+			lastSortKey: null,
+			scannedMessages: 0,
+			complete: false
+		};
+		timelineScan = scan;
 
-				if (result.data.reachedStart) {
-					$status.text(__('Reached the start of the chat.', 'chat-to-blog'));
-				} else {
-					$status.text(sprintf(
-						/* translators: 1: formatted date, 2: number of messages scanned */
-						__('Jumped to %1$s (scanned %2$d messages).', 'chat-to-blog'),
-						targetDate.toLocaleDateString(),
-						result.data.scannedMessages || 0
+		$('#ctb-timeline').show();
+		$('#ctb-timeline-bars').empty();
+		$('.ctb-timeline-status').text(__('Loading history…', 'chat-to-blog'));
+
+		(async function() {
+			try {
+				for await (const batch of beeper.scanAllMessagesIterator(chatId)) {
+					if (scan.aborted || scan.chatId !== currentChatId) return;
+					if (batch.error) {
+						$('.ctb-timeline-status').text(batch.error);
+						return;
+					}
+					for (const msg of batch.items) {
+						scan.scannedMessages++;
+						if (!msg.timestamp) continue;
+						const d = new Date(msg.timestamp);
+						const key = monthKey(d.getFullYear(), d.getMonth() + 1);
+						scan.counts[key] = (scan.counts[key] || 0) + 1;
+						if (!(key in scan.boundaryCursors)) {
+							scan.boundaryCursors[key] = scan.lastSortKey;
+						}
+						scan.lastSortKey = msg.sortKey;
+					}
+					renderTimeline(scan);
+					$('.ctb-timeline-status').text(sprintf(
+						/* translators: %d: number of messages scanned so far */
+						__('Scanning… %d messages', 'chat-to-blog'),
+						scan.scannedMessages
 					));
 				}
+				if (scan.aborted || scan.chatId !== currentChatId) return;
+				scan.complete = true;
+				$('.ctb-timeline-status').text(sprintf(
+					/* translators: %d: total scanned message count */
+					__('Loaded full history (%d messages)', 'chat-to-blog'),
+					scan.scannedMessages
+				));
+			} catch (err) {
+				$('.ctb-timeline-status').text(err.message || String(err));
+			}
+		})();
+	}
 
-				currentCursor = result.data.cursor;
-				$('#ctb-jump-reset').show();
-				loadMedia(false);
-			})
-			.catch(function(err) {
-				$status.text(err.message || String(err));
-			})
-			.finally(function() {
-				$btn.prop('disabled', false);
-			});
+	function renderTimeline(scan) {
+		const keys = Object.keys(scan.counts).sort();
+		if (keys.length === 0) return;
+
+		const firstParts = keys[0].split('-').map(Number);
+		const lastParts = keys[keys.length - 1].split('-').map(Number);
+		const firstYear = firstParts[0], firstMonth = firstParts[1];
+		const lastYear = lastParts[0], lastMonth = lastParts[1];
+
+		const allMonths = [];
+		let y = firstYear, m = firstMonth;
+		while (y < lastYear || (y === lastYear && m <= lastMonth)) {
+			const key = monthKey(y, m);
+			allMonths.push({ key: key, year: y, month: m, count: scan.counts[key] || 0 });
+			m++;
+			if (m > 12) { m = 1; y++; }
+		}
+
+		let maxCount = 1;
+		allMonths.forEach(function(mo) { if (mo.count > maxCount) maxCount = mo.count; });
+
+		const names = getMonthNames();
+		const $bars = $('#ctb-timeline-bars');
+		const wasAtEnd = $bars.length && ($bars[0].scrollLeft + $bars[0].clientWidth >= $bars[0].scrollWidth - 5);
+		$bars.empty();
+
+		allMonths.forEach(function(mo, idx) {
+			const pct = mo.count > 0 ? Math.max(2, (mo.count / maxCount) * 100) : 0;
+			const tooltip = names[mo.month - 1] + ' ' + mo.year + ' · ' + sprintf(
+				/* translators: %d: number of messages in a given month */
+				_n('%d message', '%d messages', mo.count, 'chat-to-blog'),
+				mo.count
+			);
+			const $bar = $('<button type="button" class="ctb-timeline-bar">')
+				.attr('data-year', mo.year)
+				.attr('data-month', mo.month)
+				.attr('title', tooltip);
+			$bar.append($('<span class="ctb-timeline-bar-fill">').css('height', pct + '%'));
+			if (mo.month === 1 || idx === 0) {
+				$bar.append($('<span class="ctb-timeline-bar-year">').text(mo.year));
+			}
+			$bars.append($bar);
+		});
+
+		if (wasAtEnd && $bars.length) {
+			$bars[0].scrollLeft = $bars[0].scrollWidth;
+		}
+	}
+
+	$(document).on('click', '.ctb-timeline-bar', function() {
+		if (!currentChatId) return;
+		const year = parseInt($(this).attr('data-year'), 10);
+		const month = parseInt($(this).attr('data-month'), 10);
+		const key = monthKey(year, month);
+
+		$('.ctb-timeline-bar').removeClass('active');
+		$(this).addClass('active');
+
+		if (timelineScan && timelineScan.chatId === currentChatId && key in timelineScan.boundaryCursors) {
+			currentCursor = timelineScan.boundaryCursors[key];
+			$('#ctb-timeline-reset').toggle(currentCursor !== null);
+			loadMedia(false);
+			return;
+		}
+
+		const lastDay = new Date(year, month, 0).getDate();
+		const targetDate = new Date(year, month - 1, lastDay, 23, 59, 59, 999);
+		const $status = $('.ctb-timeline-status');
+		$status.text(__('Jumping…', 'chat-to-blog'));
+		$('#ctb-media-grid').html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Scanning messages…', 'chat-to-blog') + '</div>');
+
+		beeper.jumpToDate(currentChatId, targetDate).then(function(result) {
+			if (!result.success) { $status.text(result.error); return; }
+			currentCursor = result.data.cursor;
+			$('#ctb-timeline-reset').show();
+			$status.empty();
+			loadMedia(false);
+		});
 	});
 
-	$('#ctb-jump-reset').on('click', function() {
+	$('#ctb-timeline-reset').on('click', function() {
 		if (!currentChatId) return;
 		currentCursor = null;
-		$('.ctb-jump-status').empty();
-		$('#ctb-jump-date').val('');
+		$('.ctb-timeline-bar').removeClass('active');
 		$(this).hide();
 		loadMedia(false);
 	});

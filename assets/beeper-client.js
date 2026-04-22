@@ -217,6 +217,27 @@ class BeeperClient {
 	}
 
 	/**
+	 * Scan the chat backwards in time, yielding each raw message batch.
+	 * Caller is expected to check for aborts (e.g. chat switch) between
+	 * yields.
+	 */
+	async *scanAllMessagesIterator(chatId, maxBatches = 1000) {
+		let cursor = null;
+		for (let i = 0; i < maxBatches; i++) {
+			const result = await this.getChatMessages(chatId, cursor, 'before');
+			if (!result.success) {
+				yield { error: result.error };
+				return;
+			}
+			const items = result.data.items || [];
+			if (items.length === 0) return;
+			yield { items };
+			if (!result.data.hasMore) return;
+			cursor = items[items.length - 1].sortKey;
+		}
+	}
+
+	/**
 	 * Scan messages backwards until reaching the target date.
 	 *
 	 * Returns a cursor positioned so that the next getMediaMessages() call

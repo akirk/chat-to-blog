@@ -53,12 +53,13 @@ $categories = get_categories( [ 'hide_empty' => false ] );
 			<div class="ctb-two-column">
 			<div class="ctb-column-left">
 				<div class="ctb-panel">
-					<div id="ctb-jump-to-date" class="ctb-jump-to-date" style="display:none;">
-						<label for="ctb-jump-date"><?php esc_html_e( 'Jump to date:', 'chat-to-blog' ); ?></label>
-						<input type="date" id="ctb-jump-date" />
-						<button type="button" id="ctb-jump-btn" class="button"><?php esc_html_e( 'Go', 'chat-to-blog' ); ?></button>
-						<button type="button" id="ctb-jump-reset" class="button-link" style="display:none;"><?php esc_html_e( 'Back to latest', 'chat-to-blog' ); ?></button>
-						<span class="ctb-jump-status"></span>
+					<div id="ctb-timeline" class="ctb-timeline" style="display:none;">
+						<div class="ctb-timeline-header">
+							<span class="ctb-timeline-label"><?php esc_html_e( 'Jump to month', 'chat-to-blog' ); ?></span>
+							<span class="ctb-timeline-status"></span>
+							<button type="button" id="ctb-timeline-reset" class="button-link" style="display:none;"><?php esc_html_e( 'Back to latest', 'chat-to-blog' ); ?></button>
+						</div>
+						<div id="ctb-timeline-bars" class="ctb-timeline-bars"></div>
 					</div>
 					<div id="ctb-media-grid" class="ctb-media-grid">
 						<p class="ctb-hint"><?php esc_html_e( 'Select a chat above to browse media', 'chat-to-blog' ); ?></p>
