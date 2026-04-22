@@ -225,8 +225,9 @@ class BeeperClient {
 	 * Caller is expected to check for aborts (e.g. chat switch) between
 	 * yields.
 	 */
-	async *scanAllMessagesIterator(chatId, maxBatches = 500, limit = 500) {
+	async *scanAllMessagesIterator(chatId, maxBatches = 20000, limit = 500) {
 		let cursor = null;
+		let prevCursor = null;
 		for (let i = 0; i < maxBatches; i++) {
 			const result = await this.getChatMessages(chatId, cursor, 'before', limit);
 			if (!result.success) {
@@ -237,7 +238,13 @@ class BeeperClient {
 			if (items.length === 0) return;
 			yield { items };
 			if (!result.data.hasMore) return;
-			cursor = items[items.length - 1].sortKey;
+			const nextCursor = items[items.length - 1].sortKey;
+			if (nextCursor === prevCursor || nextCursor === cursor) {
+				// Guard against server returning the same cursor repeatedly.
+				return;
+			}
+			prevCursor = cursor;
+			cursor = nextCursor;
 		}
 	}
 
