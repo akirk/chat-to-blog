@@ -215,19 +215,15 @@
 			notifyFetchOutcome(response.status);
 			if (!response.ok) return parseFetchError(response);
 			return response.blob();
-		}).catch(function(err) {
-			if (err && err.isTimeout) {
-				// Treat a timeout as the same stress signal as a 502 so the
-				// queue backs off instead of piling more slow requests on.
-				notifyFetchOutcome(502);
-			}
-			throw err;
 		});
 	}
 
 	function fetchBlobWithRetry(mediaUrl, retriesLeft, onStart) {
 		return fetchBlob(mediaUrl, onStart).catch(function(err) {
-			if (retriesLeft > 0 && !err.permanent) {
+			// Skip auto-retry for timeouts (Beeper just doesn't have this
+			// asset available quickly) and permanent errors. The manual
+			// ↻ button is still there if the user wants to try again.
+			if (retriesLeft > 0 && !err.permanent && !err.isTimeout) {
 				return new Promise(function(resolve, reject) {
 					setTimeout(function() {
 						fetchBlobWithRetry(mediaUrl, retriesLeft - 1, onStart).then(resolve, reject);
@@ -558,6 +554,28 @@
 	var timelineScanController = null;
 	var monthLoadController = null;
 	var monthLoadToken = 0;
+	var timelineRenderDue = 0;
+	var timelineRenderTimer = null;
+	var TIMELINE_RENDER_MIN_INTERVAL_MS = 400;
+
+	function renderTimelineThrottled(scan, immediate) {
+		var now = Date.now();
+		if (immediate || now >= timelineRenderDue) {
+			if (timelineRenderTimer) {
+				clearTimeout(timelineRenderTimer);
+				timelineRenderTimer = null;
+			}
+			timelineRenderDue = now + TIMELINE_RENDER_MIN_INTERVAL_MS;
+			renderTimeline(scan);
+			return;
+		}
+		if (timelineRenderTimer) return;
+		timelineRenderTimer = setTimeout(function() {
+			timelineRenderTimer = null;
+			timelineRenderDue = Date.now() + TIMELINE_RENDER_MIN_INTERVAL_MS;
+			renderTimeline(scan);
+		}, timelineRenderDue - now);
+	}
 
 	function initTimeline(chatId) {
 		if (timelineScanController) {
@@ -629,11 +647,14 @@
 					scan.lastSortKey = msg.sortKey;
 				}
 
-				// Only redraw the bar chart when the set of months changes.
-				// Count-only updates within existing months are skipped so the
-				// main thread stays free for click handlers while the scan runs.
+				// Redraw on new-month discovery so the bar appears quickly,
+				// then throttle subsequent redraws to at most once per
+				// ~400ms. That keeps growing bars visible without
+				// rebuilding the DOM on every tiny batch.
 				if (encounteredNewMonth) {
-					renderTimeline(scan);
+					renderTimelineThrottled(scan, true);
+				} else {
+					renderTimelineThrottled(scan, false);
 				}
 				$('.ctb-timeline-status').text(sprintf(
 					/* translators: %d: number of messages scanned so far */
