@@ -203,7 +203,7 @@
 		}).then(function(err) { throw err; });
 	}
 
-	var MEDIA_FETCH_TIMEOUT_MS = 300;
+	var MEDIA_FETCH_TIMEOUT_MS = 150;
 
 	function fetchBlob(mediaUrl, onStart) {
 		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
@@ -705,31 +705,59 @@
 
 		const names = getMonthNames();
 		const $bars = $('#ctb-timeline-bars');
-		$bars.empty();
+		const existing = $bars.find('.ctb-timeline-bar').toArray();
 
+		// Update in place rather than empty()+append so clicks on already-
+		// visible bars aren't lost to a redraw. We only ever append new
+		// bars (older months) to the right, never remove or reorder.
 		let prevYear = null;
-		allMonths.forEach(function(mo) {
+		allMonths.forEach(function(mo, idx) {
 			const pct = mo.count > 0 ? Math.max(2, (mo.count / maxCount) * 100) : 0;
 			const tooltip = names[mo.month - 1] + ' ' + mo.year + ' · ' + sprintf(
 				/* translators: %d: number of messages in a given month */
 				_n('%d message', '%d messages', mo.count, 'chat-to-blog'),
 				mo.count
 			);
-			const $bar = $('<button type="button" class="ctb-timeline-bar">')
-				.attr('data-year', mo.year)
-				.attr('data-month', mo.month)
-				.attr('title', tooltip);
-			if (selectedMonth && selectedMonth.year === mo.year && selectedMonth.month === mo.month) {
-				$bar.addClass('active');
+			const existingEl = existing[idx];
+			const needsYearLabel = mo.year !== prevYear;
+
+			if (existingEl && String(existingEl.dataset.year) === String(mo.year) && String(existingEl.dataset.month) === String(mo.month)) {
+				// Reuse — update height / tooltip / active / year label only.
+				const $bar = $(existingEl);
+				$bar.attr('title', tooltip);
+				$bar.find('.ctb-timeline-bar-fill').css('height', pct + '%');
+				const isActive = !!(selectedMonth && selectedMonth.year === mo.year && selectedMonth.month === mo.month);
+				$bar.toggleClass('active', isActive);
+				const $existingYear = $bar.find('.ctb-timeline-bar-year');
+				if (needsYearLabel && $existingYear.length === 0) {
+					$bar.append($('<span class="ctb-timeline-bar-year">').text(mo.year));
+				} else if (!needsYearLabel && $existingYear.length > 0) {
+					$existingYear.remove();
+				}
+			} else {
+				const $bar = $('<button type="button" class="ctb-timeline-bar">')
+					.attr('data-year', mo.year)
+					.attr('data-month', mo.month)
+					.attr('title', tooltip);
+				if (selectedMonth && selectedMonth.year === mo.year && selectedMonth.month === mo.month) {
+					$bar.addClass('active');
+				}
+				$bar.append($('<span class="ctb-timeline-bar-fill">').css('height', pct + '%'));
+				$bar.append($('<span class="ctb-timeline-bar-month">').text(names[mo.month - 1]));
+				if (needsYearLabel) {
+					$bar.append($('<span class="ctb-timeline-bar-year">').text(mo.year));
+				}
+				$bars.append($bar);
 			}
-			$bar.append($('<span class="ctb-timeline-bar-fill">').css('height', pct + '%'));
-			$bar.append($('<span class="ctb-timeline-bar-month">').text(names[mo.month - 1]));
-			if (mo.year !== prevYear) {
-				$bar.append($('<span class="ctb-timeline-bar-year">').text(mo.year));
-				prevYear = mo.year;
-			}
-			$bars.append($bar);
+			prevYear = mo.year;
 		});
+
+		// Trim any stale bars beyond the current month list (shouldn't
+		// usually happen, but covers the case of a chat switch that
+		// re-renders into the same DOM before empty() is called).
+		for (let i = allMonths.length; i < existing.length; i++) {
+			existing[i].parentNode && existing[i].parentNode.removeChild(existing[i]);
+		}
 	}
 
 	$(document).on('click', '.ctb-timeline-bar', function() {
