@@ -338,6 +338,12 @@
 .ctb-media-item img.ctb-loading,
 .ctb-media-item video.ctb-loading {
 	background: #e0e0e0;
+	animation: ctb-loading-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ctb-loading-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.55; }
 }
 
 .ctb-media-item img.ctb-error,

@@ -89,7 +89,9 @@
 
 	function throttledFetch(url, options) {
 		var signal = viewAbortController ? viewAbortController.signal : null;
+		var onStart = options && options.onStart;
 		var mergedOptions = Object.assign({}, options || {}, signal ? { signal: signal } : {});
+		delete mergedOptions.onStart;
 		return new Promise(function(resolve, reject) {
 			var item = {
 				reject: reject,
@@ -97,6 +99,9 @@
 					if (signal && signal.aborted) {
 						reject(new DOMException('Aborted', 'AbortError'));
 						return Promise.resolve();
+					}
+					if (typeof onStart === 'function') {
+						try { onStart(); } catch (e) {}
 					}
 					return fetch(url, mergedOptions).then(resolve, reject);
 				}
@@ -132,22 +137,23 @@
 		}).then(function(err) { throw err; });
 	}
 
-	function fetchBlob(mediaUrl) {
+	function fetchBlob(mediaUrl, onStart) {
 		var url = 'http://localhost:23373/v1/assets/serve?url=' + encodeURIComponent(mediaUrl);
 		return throttledFetch(url, {
-			headers: { 'Authorization': 'Bearer ' + config.beeperToken }
+			headers: { 'Authorization': 'Bearer ' + config.beeperToken },
+			onStart: onStart
 		}).then(function(response) {
 			if (!response.ok) return parseFetchError(response);
 			return response.blob();
 		});
 	}
 
-	function fetchBlobWithRetry(mediaUrl, retriesLeft) {
-		return fetchBlob(mediaUrl).catch(function(err) {
+	function fetchBlobWithRetry(mediaUrl, retriesLeft, onStart) {
+		return fetchBlob(mediaUrl, onStart).catch(function(err) {
 			if (retriesLeft > 0 && !err.permanent) {
 				return new Promise(function(resolve, reject) {
 					setTimeout(function() {
-						fetchBlobWithRetry(mediaUrl, retriesLeft - 1).then(resolve, reject);
+						fetchBlobWithRetry(mediaUrl, retriesLeft - 1, onStart).then(resolve, reject);
 					}, 600);
 				});
 			}
@@ -156,7 +162,10 @@
 	}
 
 	// Fetch media via Beeper and return as data URL (cached on success).
-	function fetchImageAsDataUrl(mediaUrl) {
+	// onStart fires when the fetch actually hits the network (past the
+	// throttle queue), so callers can show a loading indicator only for
+	// images that are really in flight.
+	function fetchImageAsDataUrl(mediaUrl, onStart) {
 		if (config.demoMode && config.placeholderImage && !demoIsWhitelisted(mediaUrl)) {
 			return Promise.resolve(config.placeholderImage);
 		}
@@ -165,7 +174,7 @@
 			return Promise.resolve(imageCache[mediaUrl]);
 		}
 
-		return fetchBlobWithRetry(mediaUrl, 1).then(function(blob) {
+		return fetchBlobWithRetry(mediaUrl, 1, onStart).then(function(blob) {
 			return new Promise(function(resolve) {
 				var reader = new FileReader();
 				reader.onloadend = function() {
@@ -202,22 +211,22 @@
 
 	function loadImage($img, mxcUrl) {
 		$img.attr('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'); // 1px placeholder
-		$img.addClass('ctb-loading').removeClass('ctb-error');
+		$img.removeClass('ctb-loading ctb-error');
 		var $item = $img.closest('.ctb-media-item, .ctb-selected-thumb');
 		clearMediaErrorState($item);
 
-		fetchImageAsDataUrl(mxcUrl)
+		fetchImageAsDataUrl(mxcUrl, function() {
+			$img.addClass('ctb-loading');
+		})
 			.then(function(dataUrl) {
 				$img.attr('src', dataUrl);
 				$img.removeClass('ctb-loading');
 			})
 			.catch(function(err) {
-				if (isAbortError(err)) {
-					$img.removeClass('ctb-loading');
-					return;
-				}
+				$img.removeClass('ctb-loading');
+				if (isAbortError(err)) return;
 				console.warn('Failed to load image:', err);
-				$img.addClass('ctb-error').removeClass('ctb-loading');
+				$img.addClass('ctb-error');
 				attachMediaErrorState($item, err, function() {
 					loadImage($img, mxcUrl);
 				});
@@ -230,22 +239,22 @@
 			return;
 		}
 
-		$video.addClass('ctb-loading').removeClass('ctb-error');
+		$video.removeClass('ctb-loading ctb-error');
 		var $item = $video.closest('.ctb-media-item, .ctb-selected-thumb');
 		clearMediaErrorState($item);
 
-		fetchBlobWithRetry(mxcUrl, 1)
+		fetchBlobWithRetry(mxcUrl, 1, function() {
+			$video.addClass('ctb-loading');
+		})
 			.then(function(blob) {
 				$video.attr('src', URL.createObjectURL(blob));
 				$video.removeClass('ctb-loading');
 			})
 			.catch(function(err) {
-				if (isAbortError(err)) {
-					$video.removeClass('ctb-loading');
-					return;
-				}
+				$video.removeClass('ctb-loading');
+				if (isAbortError(err)) return;
 				console.warn('Failed to load video:', err);
-				$video.addClass('ctb-error').removeClass('ctb-loading');
+				$video.addClass('ctb-error');
 				attachMediaErrorState($item, err, function() {
 					loadVideo($video, mxcUrl);
 				});
@@ -516,6 +525,7 @@
 				var items = result.data.items || [];
 				if (items.length === 0) break;
 
+				var encounteredNewMonth = false;
 				for (var j = 0; j < items.length; j++) {
 					var msg = items[j];
 					scan.scannedMessages++;
@@ -525,7 +535,11 @@
 					}
 					var d = new Date(msg.timestamp);
 					var key = monthKey(d.getFullYear(), d.getMonth() + 1);
-					scan.counts[key] = (scan.counts[key] || 0) + 1;
+					if (!(key in scan.counts)) {
+						scan.counts[key] = 0;
+						encounteredNewMonth = true;
+					}
+					scan.counts[key]++;
 					if (!(key in scan.boundaryCursors)) {
 						scan.boundaryCursors[key] = scan.lastSortKey;
 					}
@@ -533,7 +547,12 @@
 					scan.lastSortKey = msg.sortKey;
 				}
 
-				renderTimeline(scan);
+				// Only redraw the bar chart when the set of months changes.
+				// Count-only updates within existing months are skipped so the
+				// main thread stays free for click handlers while the scan runs.
+				if (encounteredNewMonth) {
+					renderTimeline(scan);
+				}
 				$('.ctb-timeline-status').text(sprintf(
 					/* translators: %d: number of messages scanned so far */
 					__('Scanning… %d messages', 'chat-to-blog'),
@@ -548,6 +567,7 @@
 
 			if (scan.chatId !== chatId) return;
 			scan.complete = true;
+			renderTimeline(scan);
 			$('.ctb-timeline-status').text(sprintf(
 				/* translators: %d: total messages scanned */
 				__('Scanned %d messages', 'chat-to-blog'),
