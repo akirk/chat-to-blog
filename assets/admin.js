@@ -422,7 +422,7 @@
 		selectedMonth = null;
 		abortPendingViewFetches();
 		$('#ctb-timeline-reset').hide();
-		startTimelineScan(chat.id);
+		initTimeline(chat.id);
 		loadMedia(false);
 	});
 
@@ -453,129 +453,110 @@
 		return year + '-' + (month < 10 ? '0' + month : '' + month);
 	}
 
-	var TIMELINE_CACHE_TTL_MS = 60 * 60 * 1000;
-	var TIMELINE_CACHE_VERSION = 2;
-
-	function loadCachedTimeline(chatId) {
-		try {
-			var raw = localStorage.getItem('ctb_timeline_' + chatId);
-			if (!raw) return null;
-			var data = JSON.parse(raw);
-			if (!data || data.v !== TIMELINE_CACHE_VERSION) return null;
-			if (!data.ts || Date.now() - data.ts > TIMELINE_CACHE_TTL_MS) return null;
-			return data;
-		} catch (e) { return null; }
+	function isValidMessageTimestamp(msg) {
+		if (!msg || !msg.timestamp) return false;
+		var t = new Date(msg.timestamp).getTime();
+		if (isNaN(t)) return false;
+		// Ignore bogus 0001-01-01-ish timestamps (some chats have outliers
+		// from corrupted rows or system events). Matrix/Beeper history
+		// doesn't pre-date ~2014, so anything before 2000 is wrong.
+		if (new Date(msg.timestamp).getFullYear() < 2000) return false;
+		return true;
 	}
 
-	function saveCachedTimeline(chatId, scan) {
-		try {
-			localStorage.setItem('ctb_timeline_' + chatId, JSON.stringify({
-				v: TIMELINE_CACHE_VERSION,
-				ts: Date.now(),
-				counts: scan.counts,
-				boundaryCursors: scan.boundaryCursors,
-				scannedMessages: scan.scannedMessages
-			}));
-		} catch (e) {}
-	}
+	var timelineScanController = null;
+	var monthLoadController = null;
+	var monthLoadToken = 0;
 
-	function startTimelineScan(chatId) {
-		if (timelineScan) timelineScan.aborted = true;
+	function initTimeline(chatId) {
+		if (timelineScanController) {
+			try { timelineScanController.abort(); } catch (e) {}
+		}
+		timelineScanController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
 
-		var scan = {
+		timelineScan = {
 			chatId: chatId,
-			aborted: false,
 			counts: {},
 			boundaryCursors: {},
-			mediaByMonth: {},
-			completedMonths: new Set(),
 			lastSeenMonth: null,
 			lastSortKey: null,
 			scannedMessages: 0,
 			complete: false
 		};
-		timelineScan = scan;
 
 		$('#ctb-timeline').show();
 		$('#ctb-timeline-bars').empty();
+		renderTimeline(timelineScan);
 
-		var cached = loadCachedTimeline(chatId);
-		if (cached) {
-			scan.counts = cached.counts || {};
-			scan.boundaryCursors = cached.boundaryCursors || {};
-			scan.scannedMessages = cached.scannedMessages || 0;
-			scan.complete = true;
-			renderTimeline(scan);
-			$('.ctb-timeline-status').text(sprintf(
-				/* translators: %d: message count from cached scan */
-				__('Cached history (%d messages)', 'chat-to-blog'),
-				scan.scannedMessages
-			));
-			return;
-		}
+		startTimelineCountScan(chatId);
+	}
 
-		$('.ctb-timeline-status').text(__('Loading history…', 'chat-to-blog'));
+	// Fast counts-only scan — walks every message once to fill in the bar
+	// chart. Does NOT fetch media; that happens on demand when a month is
+	// clicked. This is the only long-running background activity, and its
+	// progress is visible in the timeline header.
+	async function startTimelineCountScan(chatId) {
+		var controller = timelineScanController;
+		var signal = controller ? controller.signal : null;
+		var scan = timelineScan;
+		var cursor = null;
+		var maxBatches = 20000;
 
-		(async function() {
-			try {
-				for await (const batch of beeper.scanAllMessagesIterator(chatId)) {
-					if (scan.aborted || scan.chatId !== currentChatId) return;
-					if (batch.error) {
-						$('.ctb-timeline-status').text(batch.error);
-						return;
-					}
-					for (const msg of batch.items) {
-						scan.scannedMessages++;
-						if (!msg.timestamp) continue;
-						const d = new Date(msg.timestamp);
-						const key = monthKey(d.getFullYear(), d.getMonth() + 1);
-						scan.counts[key] = (scan.counts[key] || 0) + 1;
-						if (!(key in scan.boundaryCursors)) {
-							scan.boundaryCursors[key] = scan.lastSortKey;
-						}
-						if (scan.lastSeenMonth && scan.lastSeenMonth !== key) {
-							scan.completedMonths.add(scan.lastSeenMonth);
-						}
-						scan.lastSeenMonth = key;
-						scan.lastSortKey = msg.sortKey;
+		$('.ctb-timeline-status').text(__('Scanning history…', 'chat-to-blog'));
 
-						const attachments = msg.attachments || [];
-						for (const att of attachments) {
-							if (att.type !== 'img' && att.type !== 'video') continue;
-							if (!scan.mediaByMonth[key]) scan.mediaByMonth[key] = [];
-							scan.mediaByMonth[key].push({
-								id: att.id,
-								mxcUrl: att.id,
-								timestamp: msg.timestamp,
-								text: msg.text || '',
-								sender: msg.senderName || (msg.isSender ? 'You' : 'Unknown'),
-								mimeType: att.mimeType,
-								fileName: att.fileName,
-								sortKey: msg.sortKey,
-								type: att.type
-							});
-						}
-					}
-					renderTimeline(scan);
-					$('.ctb-timeline-status').text(sprintf(
-						/* translators: %d: number of messages scanned so far */
-						__('Scanning… %d messages', 'chat-to-blog'),
-						scan.scannedMessages
-					));
+		try {
+			for (var i = 0; i < maxBatches; i++) {
+				if (scan.chatId !== chatId || (signal && signal.aborted)) return;
+				var result = await beeper.getChatMessages(chatId, cursor, 'before', 500, signal);
+				if (result.aborted || scan.chatId !== chatId) return;
+				if (!result.success) {
+					$('.ctb-timeline-status').text(result.error);
+					return;
 				}
-				if (scan.aborted || scan.chatId !== currentChatId) return;
-				if (scan.lastSeenMonth) scan.completedMonths.add(scan.lastSeenMonth);
-				scan.complete = true;
-				saveCachedTimeline(chatId, scan);
+				var items = result.data.items || [];
+				if (items.length === 0) break;
+
+				for (var j = 0; j < items.length; j++) {
+					var msg = items[j];
+					scan.scannedMessages++;
+					if (!isValidMessageTimestamp(msg)) {
+						if (msg.sortKey) scan.lastSortKey = msg.sortKey;
+						continue;
+					}
+					var d = new Date(msg.timestamp);
+					var key = monthKey(d.getFullYear(), d.getMonth() + 1);
+					scan.counts[key] = (scan.counts[key] || 0) + 1;
+					if (!(key in scan.boundaryCursors)) {
+						scan.boundaryCursors[key] = scan.lastSortKey;
+					}
+					scan.lastSeenMonth = key;
+					scan.lastSortKey = msg.sortKey;
+				}
+
+				renderTimeline(scan);
 				$('.ctb-timeline-status').text(sprintf(
-					/* translators: %d: total scanned message count */
-					__('Loaded full history (%d messages)', 'chat-to-blog'),
+					/* translators: %d: number of messages scanned so far */
+					__('Scanning… %d messages', 'chat-to-blog'),
 					scan.scannedMessages
 				));
-			} catch (err) {
-				$('.ctb-timeline-status').text(err.message || String(err));
+
+				if (!result.data.hasMore) break;
+				var next = items[items.length - 1].sortKey;
+				if (next === cursor) break;
+				cursor = next;
 			}
-		})();
+
+			if (scan.chatId !== chatId) return;
+			scan.complete = true;
+			$('.ctb-timeline-status').text(sprintf(
+				/* translators: %d: total messages scanned */
+				__('Scanned %d messages', 'chat-to-blog'),
+				scan.scannedMessages
+			));
+		} catch (err) {
+			if (isAbortError(err)) return;
+			$('.ctb-timeline-status').text(err.message || String(err));
+		}
 	}
 
 	function renderTimeline(scan) {
@@ -645,6 +626,11 @@
 	$('#ctb-timeline-reset').on('click', function() {
 		if (!currentChatId) return;
 		abortPendingViewFetches();
+		if (monthLoadController) {
+			try { monthLoadController.abort(); } catch (e) {}
+			monthLoadController = null;
+		}
+		monthLoadToken++;
 		currentCursor = null;
 		selectedMonth = null;
 		$('.ctb-timeline-bar').removeClass('active');
@@ -652,47 +638,103 @@
 		loadMedia(false);
 	});
 
-	function showMonth(year, month) {
-		const key = monthKey(year, month);
-		const scan = timelineScan;
-		const $grid = $('#ctb-media-grid');
-		const $loadMoreWrap = $('#ctb-load-more-wrap');
+	async function showMonth(year, month) {
+		if (!currentChatId) return;
 
-		// Fast path: scan has this month cached — show every message in the month.
-		if (scan && scan.chatId === currentChatId && scan.completedMonths && scan.completedMonths.has(key)) {
-			const cachedMedia = (scan.mediaByMonth && scan.mediaByMonth[key]) || [];
-			$grid.empty();
-			cumulativeStats = { totalMessages: cachedMedia.length, mediaRendered: 0, skippedTypes: {} };
-			if (cachedMedia.length === 0) {
-				$grid.html('<p class="ctb-empty">' + __('No media in this month', 'chat-to-blog') + '</p>');
-			} else {
-				renderMedia(cachedMedia, $grid);
+		// Cancel any in-flight thumbnail fetches and prior month load.
+		abortPendingViewFetches();
+		if (monthLoadController) {
+			try { monthLoadController.abort(); } catch (e) {}
+		}
+		monthLoadController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+		var signal = monthLoadController ? monthLoadController.signal : null;
+		var myToken = ++monthLoadToken;
+
+		var key = monthKey(year, month);
+		var $grid = $('#ctb-media-grid');
+		$('#ctb-load-more-wrap').hide();
+
+		var names = getMonthNames();
+		$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' +
+			sprintf(
+				/* translators: 1: month name, 2: year */
+				__('Loading %1$s %2$d…', 'chat-to-blog'),
+				names[month - 1], year
+			) + '</div>');
+
+		var monthStartMs = new Date(year, month - 1, 1).getTime();
+		var monthEndMs = new Date(year, month, 0, 23, 59, 59, 999).getTime();
+		var cursor = timelineScan && (key in timelineScan.boundaryCursors) ? timelineScan.boundaryCursors[key] : null;
+		var mediaItems = [];
+		var maxBatches = 200;
+
+		try {
+			for (var i = 0; i < maxBatches; i++) {
+				if (myToken !== monthLoadToken) return;
+				var result = await beeper.getChatMessages(currentChatId, cursor, 'before', 500, signal);
+				if (myToken !== monthLoadToken || result.aborted) return;
+				if (!result.success) {
+					$grid.html('<p class="ctb-empty">' + sprintf(
+						/* translators: %s: error message */
+						__('Error loading month: %s', 'chat-to-blog'),
+						result.error
+					) + '</p>');
+					return;
+				}
+
+				var items = result.data.items || [];
+				var reachedOlder = false;
+				for (var j = 0; j < items.length; j++) {
+					var msg = items[j];
+					if (!isValidMessageTimestamp(msg)) continue;
+					var ts = new Date(msg.timestamp).getTime();
+					if (ts < monthStartMs) { reachedOlder = true; break; }
+					if (ts > monthEndMs) continue;
+					var attachments = msg.attachments || [];
+					for (var k = 0; k < attachments.length; k++) {
+						var att = attachments[k];
+						if (att.type !== 'img' && att.type !== 'video') continue;
+						mediaItems.push({
+							id: att.id,
+							mxcUrl: att.id,
+							timestamp: msg.timestamp,
+							text: msg.text || '',
+							sender: msg.senderName || (msg.isSender ? 'You' : 'Unknown'),
+							mimeType: att.mimeType,
+							fileName: att.fileName,
+							sortKey: msg.sortKey,
+							type: att.type
+						});
+					}
+				}
+
+				// Progressive render so the user sees results as they come in.
+				if (mediaItems.length > 0) {
+					$grid.empty();
+					renderMedia(mediaItems, $grid);
+				}
+
+				if (reachedOlder) break;
+				if (items.length === 0 || !result.data.hasMore) break;
+				var next = items[items.length - 1].sortKey;
+				if (next === cursor) break;
+				cursor = next;
 			}
-			$loadMoreWrap.hide();
-			return;
+
+			if (myToken !== monthLoadToken) return;
+
+			if (mediaItems.length === 0) {
+				$grid.html('<p class="ctb-empty">' + __('No media in this month', 'chat-to-blog') + '</p>');
+			}
+		} catch (err) {
+			if (isAbortError(err)) return;
+			console.error(err);
+			$grid.html('<p class="ctb-empty">' + sprintf(
+				/* translators: %s: error message */
+				__('Error loading month: %s', 'chat-to-blog'),
+				err.message || String(err)
+			) + '</p>');
 		}
-
-		// Slower path: we know where the month starts but haven't cached its media.
-		if (scan && scan.chatId === currentChatId && key in scan.boundaryCursors) {
-			currentCursor = scan.boundaryCursors[key];
-			loadMedia(false);
-			return;
-		}
-
-		// Fallback: haven't scanned that far yet — probe with jumpToDate.
-		const lastDay = new Date(year, month, 0).getDate();
-		const targetDate = new Date(year, month - 1, lastDay, 23, 59, 59, 999);
-		const $status = $('.ctb-timeline-status');
-		$status.text(__('Jumping…', 'chat-to-blog'));
-		$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Scanning messages…', 'chat-to-blog') + '</div>');
-
-		beeper.jumpToDate(currentChatId, targetDate).then(function(result) {
-			if (selectedMonth === null || selectedMonth.year !== year || selectedMonth.month !== month) return;
-			if (!result.success) { $status.text(result.error); return; }
-			currentCursor = result.data.cursor;
-			$status.empty();
-			loadMedia(false);
-		});
 	}
 
 	var loadMediaToken = 0;
@@ -708,7 +750,7 @@
 		);
 	}
 
-	function loadMedia(append) {
+	async function loadMedia(append) {
 		if (!currentChatId) return;
 
 		var myToken = ++loadMediaToken;
@@ -720,52 +762,64 @@
 			$grid.html('<div class="ctb-loading"><span class="spinner is-active"></span> ' + __('Loading media...', 'chat-to-blog') + '</div>');
 			$stats.empty();
 			cumulativeStats = { totalMessages: 0, mediaRendered: 0, skippedTypes: {} };
+		} else {
+			$grid.find('.ctb-load-more-tile').addClass('ctb-load-more-tile-loading');
 		}
 
-		beeper.getMediaMessages(currentChatId, currentCursor)
-			.then(function(result) {
-				if (myToken !== loadMediaToken) return;
-
-				if (!result.success) {
-					if (!append) {
-						$grid.html('<p class="ctb-empty">' + sprintf(
-							/* translators: %s: error message */
-							__('Error loading media: %s', 'chat-to-blog'),
-							result.error
-						) + '</p>');
-					} else {
-						$grid.find('.ctb-load-more-tile').removeClass('ctb-load-more-tile-loading');
-					}
-					return;
-				}
-
+		try {
+			var result = await beeper.getMediaMessages(currentChatId, currentCursor);
+			if (myToken !== loadMediaToken) return;
+			if (!result.success) {
 				if (!append) {
-					$grid.empty();
+					$grid.html('<p class="ctb-empty">' + sprintf(
+						/* translators: %s: error message */
+						__('Error loading media: %s', 'chat-to-blog'),
+						result.error
+					) + '</p>');
 				} else {
-					$grid.find('.ctb-load-more-tile').remove();
+					$grid.find('.ctb-load-more-tile').removeClass('ctb-load-more-tile-loading');
 				}
+				return;
+			}
 
-				var renderStats = renderMedia(result.data.items, $grid);
-				currentCursor = result.data.nextCursor;
+			if (!append) {
+				$grid.empty();
+			} else {
+				$grid.find('.ctb-load-more-tile').remove();
+			}
 
-				if (result.data.hasMore) {
-					appendLoadMoreTile($grid);
+			var renderStats = renderMedia(result.data.items, $grid);
+			currentCursor = result.data.nextCursor;
+
+			if (result.data.hasMore) {
+				appendLoadMoreTile($grid);
+			}
+			$loadMoreWrap.show();
+
+			if (result.data.stats) {
+				cumulativeStats.totalMessages += result.data.stats.totalMessages;
+				for (var type in result.data.stats.skippedTypes) {
+					cumulativeStats.skippedTypes[type] = (cumulativeStats.skippedTypes[type] || 0) + result.data.stats.skippedTypes[type];
 				}
-				$loadMoreWrap.show();
-
-				if (result.data.stats) {
-					cumulativeStats.totalMessages += result.data.stats.totalMessages;
-					for (var type in result.data.stats.skippedTypes) {
-						cumulativeStats.skippedTypes[type] = (cumulativeStats.skippedTypes[type] || 0) + result.data.stats.skippedTypes[type];
-					}
-				}
-				cumulativeStats.mediaRendered += renderStats.mediaRendered;
-				if (renderStats.skippedFileUrls > 0) {
-					cumulativeStats.skippedTypes['media unavailable'] = (cumulativeStats.skippedTypes['media unavailable'] || 0) + renderStats.skippedFileUrls;
-				}
-
-				renderLoadStats(cumulativeStats, $stats);
-			});
+			}
+			cumulativeStats.mediaRendered += renderStats.mediaRendered;
+			if (renderStats.skippedFileUrls > 0) {
+				cumulativeStats.skippedTypes['media unavailable'] = (cumulativeStats.skippedTypes['media unavailable'] || 0) + renderStats.skippedFileUrls;
+			}
+			renderLoadStats(cumulativeStats, $stats);
+		} catch (err) {
+			if (isAbortError(err)) return;
+			console.error(err);
+			if (!append) {
+				$grid.html('<p class="ctb-empty">' + sprintf(
+					/* translators: %s: error message */
+					__('Error loading media: %s', 'chat-to-blog'),
+					err.message || String(err)
+				) + '</p>');
+			} else {
+				$grid.find('.ctb-load-more-tile').removeClass('ctb-load-more-tile-loading');
+			}
+		}
 	}
 
 	function renderLoadStats(stats, $container) {

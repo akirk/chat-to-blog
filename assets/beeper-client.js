@@ -77,7 +77,8 @@ class BeeperClient {
 					'Authorization': 'Bearer ' + this.token,
 					'Content-Type': 'application/json'
 				},
-				body: options.body ? JSON.stringify(options.body) : undefined
+				body: options.body ? JSON.stringify(options.body) : undefined,
+				signal: options.signal
 			});
 
 			const data = await response.json();
@@ -92,6 +93,9 @@ class BeeperClient {
 
 			return { success: true, data: data };
 		} catch (error) {
+			if (error && error.name === 'AbortError') {
+				return { success: false, error: 'aborted', aborted: true };
+			}
 			return {
 				success: false,
 				error: error.message || 'Failed to connect to Beeper',
@@ -129,7 +133,7 @@ class BeeperClient {
 		return this.request('/chats/' + encodeURIComponent(chatId));
 	}
 
-	async getChatMessages(chatId, cursor = null, direction = 'before', limit = null) {
+	async getChatMessages(chatId, cursor = null, direction = 'before', limit = null, signal = null) {
 		const params = {};
 		if (limit) {
 			params.limit = limit;
@@ -139,7 +143,7 @@ class BeeperClient {
 			params.direction = direction;
 		}
 
-		return this.request('/chats/' + encodeURIComponent(chatId) + '/messages', { params: params });
+		return this.request('/chats/' + encodeURIComponent(chatId) + '/messages', { params: params, signal: signal });
 	}
 
 	async getMediaMessages(chatId, cursor = null) {
