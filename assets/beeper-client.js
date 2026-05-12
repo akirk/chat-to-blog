@@ -6,6 +6,9 @@
 
 const BEEPER_DEMO_FIRST_NAMES = ['Alice', 'Bob', 'Carol', 'David', 'Emma', 'Frank', 'Grace', 'Henry', 'Isabel', 'James', 'Kate', 'Liam', 'Maya', 'Noah', 'Olivia', 'Peter', 'Quinn', 'Rachel', 'Sam', 'Tara'];
 const BEEPER_DEMO_LAST_NAMES  = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Wilson', 'Moore', 'Taylor', 'Anderson', 'Thomas', 'Jackson', 'White', 'Harris', 'Martin', 'Thompson', 'Young', 'Clark'];
+const BEEPER_MEDIA_MIN_ITEMS = 10;
+const BEEPER_MEDIA_MAX_BATCHES = 10;
+const BEEPER_MEDIA_BATCH_LIMIT = 500;
 
 class BeeperClient {
 	constructor(token, apiBase = 'http://localhost:23373/v1') {
@@ -146,19 +149,18 @@ class BeeperClient {
 		return this.request('/chats/' + encodeURIComponent(chatId) + '/messages', { params: params, signal: signal });
 	}
 
-	async getMediaMessages(chatId, cursor = null) {
+	async getMediaMessages(chatId, cursor = null, minItems = BEEPER_MEDIA_MIN_ITEMS, signal = null) {
 		const mediaItems = [];
 		let currentCursor = cursor;
 		let hasMore = true;
 		let batchCount = 0;
-		const maxBatches = 3;
-		const batchLimit = 500;
 		let totalMessages = 0;
 		const skippedTypes = {};
 
-		while (hasMore && batchCount < maxBatches) {
+		while (hasMore && batchCount < BEEPER_MEDIA_MAX_BATCHES && mediaItems.length < minItems) {
 			batchCount++;
-			const result = await this.getChatMessages(chatId, currentCursor, 'before', batchLimit);
+			const previousCursor = currentCursor;
+			const result = await this.getChatMessages(chatId, currentCursor, 'before', BEEPER_MEDIA_BATCH_LIMIT, signal);
 
 			console.log('[CTB Debug] Batch', batchCount, '- cursor:', currentCursor, 'result:', result);
 
@@ -169,6 +171,11 @@ class BeeperClient {
 			const items = result.data.items || [];
 			totalMessages += items.length;
 			console.log('[CTB Debug] Got', items.length, 'messages');
+			if (items.length === 0) {
+				hasMore = false;
+				currentCursor = null;
+				break;
+			}
 
 			for (const msg of items) {
 				const attachments = msg.attachments || [];
@@ -199,14 +206,15 @@ class BeeperClient {
 			}
 
 			const lastItem = items[items.length - 1];
-			currentCursor = lastItem ? lastItem.sortKey : null;
+			const nextCursor = lastItem ? lastItem.sortKey : null;
 			hasMore = result.data.hasMore || false;
+			currentCursor = nextCursor;
+
+			if (hasMore && (!nextCursor || nextCursor === previousCursor)) {
+				hasMore = false;
+			}
 
 			console.log('[CTB Debug] Found', mediaItems.length, 'media so far, hasMore:', hasMore);
-
-			if (mediaItems.length > 0) {
-				break;
-			}
 		}
 
 		return {

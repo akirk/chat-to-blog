@@ -924,8 +924,9 @@
 		}
 
 		try {
-			var result = await beeper.getMediaMessages(currentChatId, currentCursor);
-			if (myToken !== loadMediaToken) return;
+			var signal = viewAbortController ? viewAbortController.signal : null;
+			var result = await beeper.getMediaMessages(currentChatId, currentCursor, undefined, signal);
+			if (myToken !== loadMediaToken || result.aborted) return;
 			if (!result.success) {
 				if (!append) {
 					$grid.html('<p class="ctb-empty">' + sprintf(
