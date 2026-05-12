@@ -24,20 +24,28 @@ class Admin {
 
 		add_action( 'wp_ajax_ctb_test_connection', [ $this, 'ajax_test_connection' ] );
 		add_action( 'wp_ajax_ctb_save_token', [ $this, 'ajax_save_token' ] );
+		add_action( 'wp_ajax_ctb_save_post_types', [ $this, 'ajax_save_post_types' ] );
 		add_action( 'wp_ajax_ctb_get_chats', [ $this, 'ajax_get_chats' ] );
 		add_action( 'wp_ajax_ctb_get_media', [ $this, 'ajax_get_media' ] );
 		add_action( 'wp_ajax_ctb_create_post', [ $this, 'ajax_create_post' ] );
 	}
 
 	public function register_menus() {
-		add_submenu_page(
-			'edit.php',
-			__( 'Chat to Blog', 'chat-to-blog' ),
-			__( 'Chat to Blog', 'chat-to-blog' ),
-			'edit_posts',
-			'chat-to-blog',
-			[ $this, 'render_media_browser' ]
-		);
+		foreach ( $this->get_enabled_post_types() as $post_type ) {
+			$post_type_object = get_post_type_object( $post_type );
+			if ( ! $post_type_object || ! $post_type_object->show_ui ) {
+				continue;
+			}
+
+			add_submenu_page(
+				$this->get_post_type_parent_slug( $post_type ),
+				__( 'Chat to Blog', 'chat-to-blog' ),
+				__( 'Chat to Blog', 'chat-to-blog' ),
+				$post_type_object->cap->edit_posts,
+				'chat-to-blog',
+				[ $this, 'render_media_browser' ]
+			);
+		}
 
 		add_options_page(
 			__( 'Chat to Blog', 'chat-to-blog' ),
@@ -95,17 +103,115 @@ class Admin {
 			'importedUrls'     => array_keys( $this->importer->get_all_imported_urls() ),
 			'demoMode'         => $beeper_config['demoMode'],
 			'placeholderImage' => $beeper_config['placeholderImage'],
+			'defaultPostType'  => $this->get_current_post_type(),
 		] );
 
 		wp_set_script_translations( 'chat-to-blog-admin', 'chat-to-blog', CHAT_TO_BLOG_PATH . 'languages' );
 	}
 
 	public function render_settings() {
+		$available_post_types = $this->get_available_post_types();
+		$enabled_post_types = $this->get_enabled_post_types();
+		$create_post_url = $this->get_media_browser_url();
+
 		include CHAT_TO_BLOG_PATH . 'templates/settings.php';
 	}
 
 	public function render_media_browser() {
+		$current_post_type = $this->get_current_post_type();
+		$current_post_type_object = get_post_type_object( $current_post_type );
+
+		if ( ! $current_post_type_object ) {
+			wp_die( __( 'Invalid post type.' ) );
+		}
+
+		$current_post_type_label = $current_post_type_object->labels->singular_name;
+		$current_post_type_new_item_label = $current_post_type_object->labels->new_item;
+		$post_type_supports_categories = is_object_in_taxonomy( $current_post_type, 'category' );
+
 		include CHAT_TO_BLOG_PATH . 'templates/media-browser.php';
+	}
+
+	private function get_post_type_parent_slug( $post_type ) {
+		return $post_type === 'post' ? 'edit.php' : 'edit.php?post_type=' . $post_type;
+	}
+
+	private function get_media_browser_url( $post_type = '' ) {
+		if ( empty( $post_type ) || ! in_array( $post_type, $this->get_enabled_post_types(), true ) ) {
+			$enabled_post_types = $this->get_enabled_post_types();
+			$post_type = $enabled_post_types[0] ?? 'post';
+		}
+
+		if ( $post_type === 'post' ) {
+			return admin_url( 'edit.php?page=chat-to-blog' );
+		}
+
+		return admin_url( 'edit.php?post_type=' . $post_type . '&page=chat-to-blog' );
+	}
+
+	private function get_available_post_types() {
+		$post_types = get_post_types(
+			[
+				'show_ui' => true,
+			],
+			'objects'
+		);
+
+		unset( $post_types['attachment'] );
+
+		if ( isset( $post_types['post'] ) ) {
+			$post = $post_types['post'];
+			unset( $post_types['post'] );
+			$post_types = [ 'post' => $post ] + $post_types;
+		}
+
+		return $post_types;
+	}
+
+	private function get_enabled_post_types() {
+		$saved_post_types = get_option( 'chat_to_blog_enabled_post_types', [ 'post' ] );
+		return $this->sanitize_post_type_list( $saved_post_types );
+	}
+
+	private function get_current_post_type() {
+		$post_type = sanitize_key( $_GET['post_type'] ?? '' );
+		$enabled_post_types = $this->get_enabled_post_types();
+
+		if ( ! empty( $post_type ) ) {
+			return in_array( $post_type, $enabled_post_types, true ) ? $post_type : '';
+		}
+
+		if ( empty( $post_type ) && in_array( 'post', $enabled_post_types, true ) ) {
+			return 'post';
+		}
+
+		return $enabled_post_types[0] ?? 'post';
+	}
+
+	private function sanitize_post_type_list( $post_types ) {
+		if ( ! is_array( $post_types ) ) {
+			$post_types = [ $post_types ];
+		}
+
+		$available_post_types = $this->get_available_post_types();
+		$sanitized_post_types = [];
+
+		foreach ( $post_types as $post_type ) {
+			$post_type = sanitize_key( $post_type );
+			if ( isset( $available_post_types[ $post_type ] ) && ! in_array( $post_type, $sanitized_post_types, true ) ) {
+				$sanitized_post_types[] = $post_type;
+			}
+		}
+
+		if ( empty( $sanitized_post_types ) ) {
+			if ( isset( $available_post_types['post'] ) ) {
+				$sanitized_post_types[] = 'post';
+			} else {
+				$sanitized_post_types = array_slice( array_keys( $available_post_types ), 0, 1 );
+			}
+		}
+
+		return $sanitized_post_types;
 	}
 
 	private function get_beeper_client_config() {
@@ -161,6 +267,24 @@ class Admin {
 		}
 
 		wp_send_json_success( [ 'cleared' => true ] );
+	}
+
+	public function ajax_save_post_types() {
+		check_ajax_referer( 'chat_to_blog', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
+		}
+
+		$post_types = wp_unslash( $_POST['post_types'] ?? [] );
+		$post_types = $this->sanitize_post_type_list( $post_types );
+
+		update_option( 'chat_to_blog_enabled_post_types', $post_types );
+
+		wp_send_json_success( [
+			'post_types' => $post_types,
+			'media_url'  => $this->get_media_browser_url( $post_types[0] ?? '' ),
+		] );
 	}
 
 	public function ajax_get_chats() {
@@ -260,7 +384,7 @@ class Admin {
 	public function ajax_create_post() {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
-		if ( ! current_user_can( 'edit_posts' ) || ! current_user_can( 'upload_files' ) ) {
+		if ( ! current_user_can( 'upload_files' ) ) {
 			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
 		}
 
@@ -269,6 +393,7 @@ class Admin {
 		$content = wp_kses_post( $_POST['content'] ?? '' );
 		$format = sanitize_text_field( $_POST['format'] ?? 'gallery' );
 		$status = sanitize_text_field( $_POST['status'] ?? 'draft' );
+		$post_type = sanitize_key( $_POST['post_type'] ?? $this->get_current_post_type() );
 		$post_date = sanitize_text_field( $_POST['post_date'] ?? '' );
 		$category = intval( $_POST['category'] ?? 0 );
 		$images_json = stripslashes( $_POST['images'] ?? '[]' );
@@ -281,6 +406,17 @@ class Admin {
 
 		if ( empty( $images ) && ! $post_id ) {
 			wp_send_json_error( __( 'No media selected', 'chat-to-blog' ) );
+		}
+
+		if ( ! $post_id ) {
+			if ( ! in_array( $post_type, $this->get_enabled_post_types(), true ) ) {
+				wp_send_json_error( __( 'This post type is not enabled for Chat to Blog', 'chat-to-blog' ) );
+			}
+
+			$post_type_object = get_post_type_object( $post_type );
+			if ( ! $post_type_object || ! current_user_can( $post_type_object->cap->edit_posts ) ) {
+				wp_send_json_error( __( 'Cannot create posts of this type', 'chat-to-blog' ) );
+			}
 		}
 
 		// If updating existing post (without new images)
@@ -304,7 +440,7 @@ class Admin {
 
 			wp_update_post( $post_args );
 
-			if ( $category > 0 ) {
+			if ( $category > 0 && is_object_in_taxonomy( $post->post_type, 'category' ) ) {
 				wp_set_post_categories( $post_id, [ $category ] );
 			}
 
@@ -438,7 +574,7 @@ class Admin {
 				'post_title'   => $title,
 				'post_content' => $post_content,
 				'post_status'  => $status,
-				'post_type'    => 'post',
+				'post_type'    => $post_type,
 			];
 
 			if ( ! empty( $post_date ) ) {
@@ -463,7 +599,9 @@ class Admin {
 			] );
 		}
 
-		if ( $category > 0 ) {
+		$created_post_type = get_post_type( $post_id ) ?: $post_type;
+
+		if ( $category > 0 && is_object_in_taxonomy( $created_post_type, 'category' ) ) {
 			wp_set_post_categories( $post_id, [ $category ] );
 		}
 

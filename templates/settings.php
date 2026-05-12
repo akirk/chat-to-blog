@@ -16,7 +16,7 @@ $token = $beeper->get_token();
 <div class="wrap ctb-settings">
 	<h1>
 		<?php esc_html_e( 'Chat to Blog Settings', 'chat-to-blog' ); ?>
-		<a href="<?php echo esc_url( admin_url( 'edit.php?page=chat-to-blog' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Create Post', 'chat-to-blog' ); ?></a>
+		<a href="<?php echo esc_url( $create_post_url ); ?>" class="page-title-action"><?php esc_html_e( 'Create Post', 'chat-to-blog' ); ?></a>
 	</h1>
 
 	<?php if ( ! $is_configured ) : ?>
@@ -77,6 +77,42 @@ $token = $beeper->get_token();
 			</p>
 
 			<div id="ctb-token-status"></div>
+		</form>
+	</div>
+
+	<div class="ctb-card">
+		<h2><?php esc_html_e( 'Post Types', 'chat-to-blog' ); ?></h2>
+		<p><?php esc_html_e( 'Choose which post type menus should show Chat to Blog and which post types can receive imported media.', 'chat-to-blog' ); ?></p>
+
+		<form id="ctb-post-types-form">
+			<table class="form-table">
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Enabled post types', 'chat-to-blog' ); ?></th>
+					<td>
+						<div class="ctb-post-type-options">
+							<?php foreach ( $available_post_types as $post_type_name => $post_type_object ) : ?>
+								<label class="ctb-post-type-option">
+									<input
+										type="checkbox"
+										name="ctb-post-types[]"
+										value="<?php echo esc_attr( $post_type_name ); ?>"
+										<?php checked( in_array( $post_type_name, $enabled_post_types, true ) ); ?>
+									/>
+									<span><?php echo esc_html( $post_type_object->labels->singular_name ); ?></span>
+									<code><?php echo esc_html( $post_type_name ); ?></code>
+								</label>
+							<?php endforeach; ?>
+						</div>
+						<p class="description"><?php esc_html_e( 'At least one post type must stay enabled. If none are selected, Posts will be used.', 'chat-to-blog' ); ?></p>
+					</td>
+				</tr>
+			</table>
+
+			<p class="submit">
+				<button type="submit" class="button button-primary"><?php esc_html_e( 'Save Post Types', 'chat-to-blog' ); ?></button>
+			</p>
+
+			<div id="ctb-post-types-status"></div>
 		</form>
 	</div>
 
