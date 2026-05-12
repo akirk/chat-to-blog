@@ -27,6 +27,7 @@ class Admin {
 		add_action( 'wp_ajax_ctb_save_post_types', [ $this, 'ajax_save_post_types' ] );
 		add_action( 'wp_ajax_ctb_get_chats', [ $this, 'ajax_get_chats' ] );
 		add_action( 'wp_ajax_ctb_get_media', [ $this, 'ajax_get_media' ] );
+		add_action( 'wp_ajax_ctb_import_media', [ $this, 'ajax_import_media' ] );
 		add_action( 'wp_ajax_ctb_create_post', [ $this, 'ajax_create_post' ] );
 	}
 
@@ -381,6 +382,43 @@ class Admin {
 			'nextCursor' => $result['next_cursor'],
 		] );
 	}
+
+	public function ajax_import_media() {
+		check_ajax_referer( 'chat_to_blog', 'nonce' );
+
+		if ( ! current_user_can( 'upload_files' ) ) {
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
+		}
+
+		$images_json = stripslashes( $_POST['images'] ?? '[]' );
+		$images = json_decode( $images_json, true );
+		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
+
+		if ( empty( $images ) || ! is_array( $images ) ) {
+			wp_send_json_error( __( 'No media selected', 'chat-to-blog' ) );
+		}
+
+		$import_result = $this->import_selected_media_payloads( $images, '', $chat_id );
+		$imported_images = $import_result['images'];
+		$import_errors = $import_result['errors'];
+		$attachment_ids = array_column( $imported_images, 'attachmentId' );
+
+		if ( empty( $attachment_ids ) ) {
+			$error_message = ! empty( $import_errors )
+				? implode( ', ', $import_errors )
+				: __( 'No importable media selected', 'chat-to-blog' );
+
+			/* translators: %s: comma-separated list of error messages */
+			wp_send_json_error( sprintf( __( 'Failed to import media: %s', 'chat-to-blog' ), $error_message ) );
+		}
+
+		wp_send_json_success( [
+			'imported' => count( $attachment_ids ),
+			'images'   => $imported_images,
+			'errors'   => $import_errors,
+		] );
+	}
+
 	public function ajax_create_post() {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
@@ -462,70 +500,19 @@ class Admin {
 			}
 		}
 
-		// Import images from base64 data
-		$imported_images = []; // {mxcUrl, attachmentId}
-		$base_filename = sanitize_file_name( $title );
-		$import_errors = [];
-
-		foreach ( $images as $index => $image ) {
-			$mxc_url = $image['mxcUrl'] ?? null;
-			$data_url = $image['dataUrl'] ?? null;
-			$provided_mime_type = $image['mimeType'] ?? null;
-			$provided_filename = $image['fileName'] ?? null;
-
-			if ( ! $mxc_url || ! $data_url ) {
-				continue;
-			}
-
-			// Check if already imported
-			if ( $this->importer->is_imported( $mxc_url ) ) {
-				$imported_images[] = [
-					'mxcUrl'       => $mxc_url,
-					'attachmentId' => $this->importer->get_attachment_id( $mxc_url ),
-				];
-				continue;
-			}
-
-			if ( ! preg_match( '/^data:([^;]+);base64,(.+)$/', $data_url, $matches ) ) {
-				$import_errors[] = __( 'Invalid data URL format', 'chat-to-blog' );
-				continue;
-			}
-
-			$base64_data = $matches[2];
-			$binary_data = base64_decode( $base64_data );
-
-			if ( $binary_data === false ) {
-				$import_errors[] = __( 'Failed to decode base64 data', 'chat-to-blog' );
-				continue;
-			}
-
-			// Use provided MIME type from Beeper, fall back to data URL
-			$mime_type = $provided_mime_type ?: $matches[1];
-
-			// Build filename from post title with extension from original file or mime type
-			$ext = pathinfo( $provided_filename, PATHINFO_EXTENSION ) ?: $this->get_extension_from_mime( $mime_type ) ?: 'jpg';
-			$filename = count( $images ) > 1
-				? $base_filename . '-' . ( $index + 1 ) . '.' . $ext
-				: $base_filename . '.' . $ext;
-
-			// Save to WordPress media library
-			$result = $this->save_to_media_library( $binary_data, $filename, $mime_type, $mxc_url );
-
-			if ( is_wp_error( $result ) ) {
-				$import_errors[] = $result->get_error_message();
-			} else {
-				$imported_images[] = [
-					'mxcUrl'       => $mxc_url,
-					'attachmentId' => $result,
-				];
-			}
-		}
+		$import_result = $this->import_selected_media_payloads( $images, $title, $chat_id );
+		$imported_images = $import_result['images'];
+		$import_errors = $import_result['errors'];
 
 		$attachment_ids = array_column( $imported_images, 'attachmentId' );
 
 		if ( empty( $attachment_ids ) ) {
+			$error_message = ! empty( $import_errors )
+				? implode( ', ', $import_errors )
+				: __( 'No importable media selected', 'chat-to-blog' );
+
 			/* translators: %s: comma-separated list of error messages */
-			wp_send_json_error( sprintf( __( 'Failed to import media: %s', 'chat-to-blog' ), implode( ', ', $import_errors ) ) );
+			wp_send_json_error( sprintf( __( 'Failed to import media: %s', 'chat-to-blog' ), $error_message ) );
 		}
 
 		// Build image blocks for new images
@@ -613,6 +600,105 @@ class Admin {
 			'images'   => $imported_images,
 			'errors'   => $import_errors,
 		] );
+	}
+
+	private function import_selected_media_payloads( $images, $base_filename = '', $chat_id = '' ) {
+		$imported_images = [];
+		$import_errors = [];
+		$base_filename = sanitize_file_name( $base_filename );
+
+		if ( ! is_array( $images ) ) {
+			return [
+				'images' => $imported_images,
+				'errors' => [ __( 'No media selected', 'chat-to-blog' ) ],
+			];
+		}
+
+		foreach ( $images as $index => $image ) {
+			if ( ! is_array( $image ) ) {
+				continue;
+			}
+
+			$mxc_url = sanitize_text_field( $image['mxcUrl'] ?? '' );
+			$data_url = $image['dataUrl'] ?? '';
+			$provided_mime_type = sanitize_mime_type( $image['mimeType'] ?? '' );
+			$provided_filename = sanitize_file_name( $image['fileName'] ?? '' );
+
+			if ( ! $mxc_url ) {
+				continue;
+			}
+
+			if ( $this->importer->is_imported( $mxc_url ) ) {
+				$attachment_id = $this->importer->get_attachment_id( $mxc_url );
+				$imported_images[] = [
+					'mxcUrl'        => $mxc_url,
+					'attachmentId'  => $attachment_id,
+					'attachmentUrl' => wp_get_attachment_url( $attachment_id ),
+				];
+				continue;
+			}
+
+			if ( ! is_string( $data_url ) || ! $data_url ) {
+				continue;
+			}
+
+			if ( ! preg_match( '/^data:([^;]+);base64,(.+)$/', $data_url, $matches ) ) {
+				$import_errors[] = __( 'Invalid data URL format', 'chat-to-blog' );
+				continue;
+			}
+
+			$binary_data = base64_decode( $matches[2] );
+
+			if ( $binary_data === false ) {
+				$import_errors[] = __( 'Failed to decode base64 data', 'chat-to-blog' );
+				continue;
+			}
+
+			$mime_type = $provided_mime_type ?: sanitize_mime_type( $matches[1] );
+			$filename = $this->get_import_filename( $images, $index, $base_filename, $provided_filename, $mime_type );
+			$metadata = [
+				'timestamp' => sanitize_text_field( $image['timestamp'] ?? '' ),
+				'sender'    => sanitize_text_field( $image['sender'] ?? '' ),
+				'caption'   => sanitize_text_field( $image['text'] ?? '' ),
+				'chat_id'   => $chat_id,
+				'beeper_id' => sanitize_text_field( $image['id'] ?? $image['mediaId'] ?? '' ),
+			];
+
+			$result = $this->save_to_media_library( $binary_data, $filename, $mime_type, $mxc_url, $metadata );
+
+			if ( is_wp_error( $result ) ) {
+				$import_errors[] = $result->get_error_message();
+			} else {
+				$imported_images[] = [
+					'mxcUrl'        => $mxc_url,
+					'attachmentId'  => $result,
+					'attachmentUrl' => wp_get_attachment_url( $result ),
+				];
+			}
+		}
+
+		return [
+			'images' => $imported_images,
+			'errors' => $import_errors,
+		];
+	}
+
+	private function get_import_filename( $images, $index, $base_filename, $provided_filename, $mime_type ) {
+		$ext = pathinfo( $provided_filename, PATHINFO_EXTENSION ) ?: $this->get_extension_from_mime( $mime_type ) ?: 'jpg';
+
+		if ( ! empty( $base_filename ) ) {
+			return count( $images ) > 1
+				? $base_filename . '-' . ( $index + 1 ) . '.' . $ext
+				: $base_filename . '.' . $ext;
+		}
+
+		if ( ! empty( $provided_filename ) ) {
+			return $provided_filename;
+		}
+
+		return count( $images ) > 1
+			? 'chat-media-' . ( $index + 1 ) . '.' . $ext
+			: 'chat-media.' . $ext;
 	}
 
 	private function get_extension_from_mime( $mime_type ) {
@@ -744,7 +830,7 @@ class Admin {
 		);
 	}
 
-	private function save_to_media_library( $binary_data, $filename, $mime_type, $mxc_url = null ) {
+	private function save_to_media_library( $binary_data, $filename, $mime_type, $mxc_url = null, $metadata = [] ) {
 		$upload = wp_upload_bits( $filename, null, $binary_data );
 
 		if ( $upload['error'] ) {
@@ -753,10 +839,14 @@ class Admin {
 
 		$attachment = [
 			'post_mime_type' => $mime_type,
-			'post_title'     => pathinfo( $filename, PATHINFO_FILENAME ),
+			'post_title'     => sanitize_text_field( pathinfo( $filename, PATHINFO_FILENAME ) ),
 			'post_content'   => '',
 			'post_status'    => 'inherit',
 		];
+
+		if ( ! empty( $metadata['caption'] ) ) {
+			$attachment['post_excerpt'] = $metadata['caption'];
+		}
 
 		$attachment_id = wp_insert_attachment( $attachment, $upload['file'] );
 
@@ -771,6 +861,18 @@ class Admin {
 		// Track the mxc URL for deduplication
 		if ( $mxc_url ) {
 			update_post_meta( $attachment_id, '_chat_to_blog_mxc_url', $mxc_url );
+		}
+		if ( ! empty( $metadata['timestamp'] ) ) {
+			update_post_meta( $attachment_id, '_chat_to_blog_timestamp', $metadata['timestamp'] );
+		}
+		if ( ! empty( $metadata['sender'] ) ) {
+			update_post_meta( $attachment_id, '_chat_to_blog_sender', $metadata['sender'] );
+		}
+		if ( ! empty( $metadata['chat_id'] ) ) {
+			update_post_meta( $attachment_id, '_chat_to_blog_chat_id', $metadata['chat_id'] );
+		}
+		if ( ! empty( $metadata['beeper_id'] ) ) {
+			update_post_meta( $attachment_id, '_chat_to_blog_beeper_id', $metadata['beeper_id'] );
 		}
 
 		return $attachment_id;

@@ -85,7 +85,12 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 
 					<div class="ctb-post-form">
 						<div id="ctb-selected-images" class="ctb-selected-images">
-							<p class="ctb-hint"><?php esc_html_e( 'Select images from the left to add them here', 'chat-to-blog' ); ?></p>
+							<p class="ctb-hint"><?php esc_html_e( 'Select media from the left. Saving or publishing imports it to the Media Library automatically.', 'chat-to-blog' ); ?></p>
+						</div>
+
+						<div class="ctb-media-actions">
+							<button type="button" id="ctb-import-media" class="button" disabled><?php esc_html_e( 'Import Without Posting', 'chat-to-blog' ); ?></button>
+							<div id="ctb-media-import-status"></div>
 						</div>
 
 						<div class="ctb-form-group">
