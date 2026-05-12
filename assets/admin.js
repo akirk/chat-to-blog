@@ -55,6 +55,56 @@
 		});
 	}
 
+	function getMediaUrl(item) {
+		return item.mxcUrl || item.url || '';
+	}
+
+	function decodeHtmlEntities(value) {
+		if (typeof value !== 'string') return '';
+		if (value.indexOf('&') === -1) return value;
+
+		return $('<textarea>').html(value).text();
+	}
+
+	function isForwardedMarkerLine(line) {
+		return /^[↷↪]\s*Forwarded$/i.test((line || '').trim());
+	}
+
+	function htmlToPlainText(value) {
+		if (typeof value !== 'string') return '';
+
+		var nodes = $.parseHTML(value, document, false);
+		if (!nodes || !nodes.length) return value;
+
+		var $container = $('<div>').append(nodes);
+		$container.find('script, style').remove();
+		$container.find('*').filter(function() {
+			return isForwardedMarkerLine($(this).text());
+		}).remove();
+
+		return $container.text();
+	}
+
+	function getMediaText(item) {
+		var text = decodeHtmlEntities((item && item.text) || '');
+		text = htmlToPlainText(text);
+		text = decodeHtmlEntities(text);
+
+		return text
+			.replace(/\r\n?/g, '\n')
+			.split('\n')
+			.map(function(line) { return line.trim(); })
+			.filter(function(line) {
+				return line && !isForwardedMarkerLine(line);
+			})
+			.join('\n')
+			.trim();
+	}
+
+	function shouldUseTextAsTitle(text) {
+		return text.length <= 60 && text.indexOf('\n') === -1;
+	}
+
 	var fetchQueue = [];
 	var activeFetches = 0;
 	var MAX_CONCURRENT_FETCHES = 1;
@@ -1067,6 +1117,7 @@
 			}
 
 			stats.mediaRendered++;
+			item.text = getMediaText(item);
 
 			demoRecordSeen(item);
 
@@ -1131,8 +1182,8 @@
 			selectedMedia.splice(existingIndex, 1);
 			$item.removeClass('selected');
 
-			if (media.text && media.text.trim()) {
-				var text = media.text.trim();
+			var text = getMediaText(media).trim();
+			if (text) {
 				if ($('#ctb-post-title').val().trim() === text) {
 					$('#ctb-post-title').val('');
 				}
@@ -1145,16 +1196,16 @@
 			$item.addClass('selected');
 
 			// Auto-fill title or content from media text
-			if (media.text && media.text.trim()) {
-				var text = media.text.trim();
+			var selectedText = getMediaText(media).trim();
+			if (selectedText) {
 				var $title = $('#ctb-post-title');
 				var $content = $('#ctb-post-content');
 
-				if (text.length <= 60 && !$title.val().trim()) {
-					$title.val(text);
+				if (shouldUseTextAsTitle(selectedText) && !$title.val().trim()) {
+					$title.val(selectedText);
 					updateButtonState();
-				} else if (text.length > 60 && !$content.val().trim()) {
-					$content.val(text);
+				} else if (!$content.val().trim()) {
+					$content.val(selectedText);
 				}
 			}
 		}
@@ -1165,10 +1216,11 @@
 	function updateSelectedPanel() {
 		var $container = $('#ctb-selected-images');
 		$container.empty();
+		$('#ctb-media-import-status').empty();
 
 		if (selectedMedia.length === 0) {
-			$container.html('<p class="ctb-hint">' + __('Select images from the left to add them here', 'chat-to-blog') + '</p>');
-			$('#ctb-save-draft, #ctb-publish').prop('disabled', true);
+			$container.html('<p class="ctb-hint">' + __('Select media from the left. Saving or publishing imports it to the Media Library automatically.', 'chat-to-blog') + '</p>');
+			$('#ctb-import-media, #ctb-save-draft, #ctb-publish').prop('disabled', true);
 			$('#ctb-post-date').val('');
 			return;
 		}
@@ -1237,8 +1289,8 @@
 		var index = $thumb.index();
 		var removed = selectedMedia.splice(index, 1)[0];
 
-		if (removed.text && removed.text.trim()) {
-			var text = removed.text.trim();
+		var text = getMediaText(removed).trim();
+		if (text) {
 			if ($('#ctb-post-title').val().trim() === text) {
 				$('#ctb-post-title').val('');
 			}
@@ -1277,6 +1329,15 @@
 	function updateButtonState() {
 		var hasTitle = $('#ctb-post-title').val().trim().length > 0;
 		var hasImages = selectedMedia.length > 0;
+		var importLabel = hasImages
+			? sprintf(
+				/* translators: %d: number of selected media items */
+				_n('Import %d Item Without Posting', 'Import %d Items Without Posting', selectedMedia.length, 'chat-to-blog'),
+				selectedMedia.length
+			)
+			: __('Import Without Posting', 'chat-to-blog');
+
+		$('#ctb-import-media').text(importLabel).prop('disabled', !hasImages);
 		$('#ctb-save-draft, #ctb-publish').prop('disabled', !(hasTitle && hasImages));
 	}
 
@@ -1287,12 +1348,14 @@
 		$('#ctb-post-date').val('');
 		$('#ctb-post-category').val('');
 		$('#ctb-post-status').empty();
-		$('#ctb-save-draft').prop('disabled', true);
-		$('#ctb-publish').prop('disabled', true);
+		$('#ctb-media-import-status').empty();
+		$('#ctb-import-media').text(__('Import Without Posting', 'chat-to-blog')).prop('disabled', true);
+		$('#ctb-save-draft, #ctb-publish').prop('disabled', true);
 		updateSelectedPanel();
 		$('.ctb-media-item').removeClass('selected');
 	}
 
+	$('#ctb-import-media').on('click', importMediaOnly);
 	$('#ctb-save-draft').on('click', function() { createPost('draft'); });
 	$('#ctb-publish').on('click', function() { createPost('publish'); });
 
@@ -1508,6 +1571,109 @@
 		});
 	}
 
+	function markMediaImported(images) {
+		if (!images) return;
+
+		images.forEach(function(img) {
+			if (!img.mxcUrl) return;
+
+			importedUrls.add(img.mxcUrl);
+			$('.ctb-media-item, .ctb-selected-thumb').each(function() {
+				var media = $(this).data('media');
+				if (media && getMediaUrl(media) === img.mxcUrl) {
+					$(this).addClass('imported');
+				}
+			});
+		});
+	}
+
+	function buildSelectedMediaPayload(item, dataUrl) {
+		return {
+			mxcUrl: getMediaUrl(item),
+			dataUrl: dataUrl || '',
+			mimeType: item.mimeType,
+			fileName: item.fileName,
+			timestamp: item.timestamp,
+			sender: item.sender,
+			text: getMediaText(item),
+			id: item.id
+		};
+	}
+
+	function getSelectedMediaPayloads() {
+		return Promise.all(selectedMedia.map(function(item) {
+			var mediaUrl = getMediaUrl(item);
+
+			if (!mediaUrl) {
+				return Promise.reject(new Error(__('Selected media has no URL', 'chat-to-blog')));
+			}
+
+			if (importedUrls.has(mediaUrl)) {
+				return Promise.resolve(buildSelectedMediaPayload(item, ''));
+			}
+
+			if (imageCache[mediaUrl]) {
+				return Promise.resolve(buildSelectedMediaPayload(item, imageCache[mediaUrl]));
+			}
+
+			return fetchImageAsDataUrl(mediaUrl).then(function(dataUrl) {
+				return buildSelectedMediaPayload(item, dataUrl);
+			});
+		}));
+	}
+
+	function importMediaOnly() {
+		var selectedCount = selectedMedia.length;
+
+		if (selectedCount === 0) return;
+
+		$('#ctb-import-media, #ctb-save-draft, #ctb-publish').prop('disabled', true);
+		$('#ctb-media-import-status').html('<div class="ctb-importing">' + __('Fetching media...', 'chat-to-blog') + '</div>');
+
+		getSelectedMediaPayloads()
+			.then(function(images) {
+				$('#ctb-media-import-status').html('<div class="ctb-importing">' + __('Importing media...', 'chat-to-blog') + '</div>');
+
+				return wpAjax('ctb_import_media', {
+					images: JSON.stringify(images),
+					chat_id: currentChatId
+				});
+			})
+			.then(function(response) {
+				if (response.success) {
+					var importedCount = response.data.imported || selectedCount;
+					var statusText = sprintf(
+						/* translators: %d: number of media items */
+						_n('Imported %d item to Media Library.', 'Imported %d items to Media Library.', importedCount, 'chat-to-blog'),
+						importedCount
+					);
+
+					markMediaImported(response.data.images);
+
+					if (response.data.errors && response.data.errors.length) {
+						statusText += ' ' + sprintf(
+							/* translators: %d: number of media import errors */
+							_n('%d item failed.', '%d items failed.', response.data.errors.length, 'chat-to-blog'),
+							response.data.errors.length
+						);
+					}
+
+					$('#ctb-media-import-status').html('<div class="ctb-status ctb-status-success">' + statusText + '</div>');
+					updateButtonState();
+				} else {
+					throw new Error(response.data);
+				}
+			})
+			.catch(function(err) {
+				$('#ctb-media-import-status').html('<div class="ctb-status ctb-status-error">' + sprintf(
+					/* translators: %s: error message */
+					__('Error: %s', 'chat-to-blog'),
+					err.message
+				) + '</div>');
+				updateButtonState();
+			});
+	}
+
 	function createPost(status) {
 		var title = $('#ctb-post-title').val().trim();
 		var content = $('#ctb-post-content').val().trim();
@@ -1518,29 +1684,10 @@
 
 		if (!title || selectedMedia.length === 0) return;
 
-		$('#ctb-save-draft, #ctb-publish').prop('disabled', true);
+		$('#ctb-import-media, #ctb-save-draft, #ctb-publish').prop('disabled', true);
 		$('#ctb-post-status').html('<div class="ctb-importing">' + __('Fetching media...', 'chat-to-blog') + '</div>');
 
-		var imagePromises = selectedMedia.map(function(item) {
-			if (imageCache[item.mxcUrl]) {
-				return Promise.resolve({
-					mxcUrl: item.mxcUrl,
-					dataUrl: imageCache[item.mxcUrl],
-					mimeType: item.mimeType,
-					fileName: item.fileName
-				});
-			}
-			return fetchImageAsDataUrl(item.mxcUrl).then(function(dataUrl) {
-				return {
-					mxcUrl: item.mxcUrl,
-					dataUrl: dataUrl,
-					mimeType: item.mimeType,
-					fileName: item.fileName
-				};
-			});
-		});
-
-		var submitPromise = Promise.all(imagePromises).then(function(images) {
+		var submitPromise = getSelectedMediaPayloads().then(function(images) {
 			$('#ctb-post-status').html('<div class="ctb-importing">' + __('Creating post...', 'chat-to-blog') + '</div>');
 
 			return wpAjax('ctb_create_post', {
@@ -1570,16 +1717,7 @@
 						);
 					}
 
-					if (response.data.images) {
-						response.data.images.forEach(function(img) {
-							importedUrls.add(img.mxcUrl);
-							$('.ctb-media-item').each(function() {
-								if ($(this).data('media').mxcUrl === img.mxcUrl) {
-									$(this).addClass('imported');
-								}
-							});
-						});
-					}
+					markMediaImported(response.data.images);
 
 					var editPanels = $('.ctb-column-right').data('editPanels') || [];
 					editPanels.unshift({
