@@ -278,7 +278,7 @@
 		// server sometimes reports the asset as gone transiently, so let
 		// the user force another attempt rather than giving up silently.
 		var $retry = $('<button type="button" class="ctb-retry-btn">')
-			.attr('title', err.permanent ? __('Retry anyway', 'chat-to-blog') : __('Retry', 'chat-to-blog'))
+			.attr('title', err.permanent ? __('Retry anyway', 'chat-to-blog') : __('Retry'))
 			.text('↻');
 		$retry.on('click', function(e) {
 			e.stopPropagation();
@@ -412,6 +412,29 @@
 			})
 			.fail(function() {
 				showStatus('#ctb-token-status', __('Request failed', 'chat-to-blog'), true);
+			});
+	});
+
+	$('#ctb-post-types-form').on('submit', function(e) {
+		e.preventDefault();
+
+		var postTypes = $('input[name="ctb-post-types[]"]:checked').map(function() {
+			return $(this).val();
+		}).get();
+
+		wpAjax('ctb_save_post_types', { post_types: postTypes })
+			.done(function(response) {
+				if (response.success) {
+					showStatus('#ctb-post-types-status', __('Post types saved.', 'chat-to-blog'), false);
+					if (response.data && response.data.post_types) {
+						config.defaultPostType = response.data.post_types[0];
+					}
+				} else {
+					showStatus('#ctb-post-types-status', response.data || __('Error saving post types', 'chat-to-blog'), true);
+				}
+			})
+			.fail(function() {
+				showStatus('#ctb-post-types-status', __('Request failed', 'chat-to-blog'), true);
 			});
 	});
 
@@ -901,7 +924,7 @@
 		$grid.append(
 			'<button type="button" class="ctb-load-more-tile">' +
 				'<span class="ctb-load-more-tile-icon">+</span>' +
-				'<span class="ctb-load-more-tile-label">' + __('Load more', 'chat-to-blog') + '</span>' +
+				'<span class="ctb-load-more-tile-label">' + __('Load more') + '</span>' +
 				'<span class="spinner"></span>' +
 			'</button>'
 		);
@@ -1067,7 +1090,7 @@
 				loadImage($img, thumbnailUrl);
 			}
 
-			$item.append('<button type="button" class="ctb-preview-btn" title="' + __('Preview', 'chat-to-blog') + '">&#9974;</button>');
+			$item.append('<button type="button" class="ctb-preview-btn" title="' + __('Preview') + '">&#9974;</button>');
 
 			if (isVideo) {
 				$item.append('<div class="ctb-video-badge">VIDEO</div>');
@@ -1178,7 +1201,7 @@
 				$thumb.append('<div class="ctb-video-badge">VIDEO</div>');
 			}
 
-			$thumb.append('<button type="button" class="ctb-preview-btn" title="' + __('Preview', 'chat-to-blog') + '">&#9974;</button>');
+			$thumb.append('<button type="button" class="ctb-preview-btn" title="' + __('Preview') + '">&#9974;</button>');
 			$thumb.append('<button type="button" class="ctb-remove-selected">&times;</button>');
 			$grid.append($thumb);
 
@@ -1259,7 +1282,6 @@
 
 	function resetPostPanel() {
 		selectedMedia = [];
-		$('#ctb-panel-title').text(__('New Post', 'chat-to-blog'));
 		$('#ctb-post-title').val('');
 		$('#ctb-post-content').val('');
 		$('#ctb-post-date').val('');
@@ -1478,8 +1500,8 @@
 				'<div class="ctb-panel-header">' +
 				'<h3>' + $('<div>').text(panel.title).html() + '</h3>' +
 				'<span class="ctb-collapsed-links">' +
-				'<a href="' + panel.editUrl + '" target="_blank">' + __('Edit', 'chat-to-blog') + '</a> · ' +
-				'<a href="' + panel.viewUrl + '" target="_blank">' + __('View', 'chat-to-blog') + '</a>' +
+				'<a href="' + panel.editUrl + '" target="_blank">' + __('Edit') + '</a> · ' +
+				'<a href="' + panel.viewUrl + '" target="_blank">' + __('View') + '</a>' +
 				'</span>' +
 				'</div></div>');
 			$('.ctb-column-right').append($el);
@@ -1490,6 +1512,7 @@
 		var title = $('#ctb-post-title').val().trim();
 		var content = $('#ctb-post-content').val().trim();
 		var format = $('input[name="ctb-format"]:checked').val();
+		var postType = config.defaultPostType || 'post';
 		var postDate = $('#ctb-post-date').val();
 		var category = $('#ctb-post-category').val() || '';
 
@@ -1525,6 +1548,7 @@
 				content: content,
 				format: format,
 				status: status,
+				post_type: postType,
 				post_date: postDate,
 				category: category,
 				images: JSON.stringify(images),
@@ -1537,7 +1561,7 @@
 				if (response.success) {
 					var postTitle = $('#ctb-post-title').val().trim();
 					var imageCount = selectedMedia.length;
-					var statusText = status === 'publish' ? __('Published', 'chat-to-blog') : __('Saved as draft', 'chat-to-blog');
+					var statusText = status === 'publish' ? __('Published') : __('Saved as draft', 'chat-to-blog');
 					if (imageCount > 0) {
 						statusText += ' ' + sprintf(
 							/* translators: %d: number of images */
@@ -1573,8 +1597,8 @@
 					$('#ctb-post-status').html(
 						'<div class="ctb-status ctb-status-success">' +
 						statusText + ' ' +
-						'<a href="' + response.data.edit_url + '" target="_blank">' + __('Edit', 'chat-to-blog') + '</a> · ' +
-						'<a href="' + response.data.view_url + '" target="_blank">' + __('View', 'chat-to-blog') + '</a>' +
+						'<a href="' + response.data.edit_url + '" target="_blank">' + __('Edit') + '</a> · ' +
+						'<a href="' + response.data.view_url + '" target="_blank">' + __('View') + '</a>' +
 						'</div>'
 					);
 				} else {

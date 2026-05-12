@@ -98,6 +98,31 @@
 	gap: 10px;
 }
 
+.ctb-post-type-heading {
+	display: inline-block;
+	margin-left: 8px;
+	color: #646970;
+	font-size: 16px;
+	font-weight: 400;
+	vertical-align: middle;
+}
+
+.ctb-post-type-options {
+	display: grid;
+	gap: 8px;
+	max-width: 420px;
+}
+
+.ctb-post-type-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.ctb-post-type-option code {
+	color: #646970;
+}
+
 .ctb-badge {
 	font-size: 12px;
 	font-weight: normal;
@@ -718,6 +743,7 @@
 }
 
 .ctb-form-group input[type="text"],
+.ctb-form-group select,
 .ctb-form-group textarea {
 	width: 100%;
 }
