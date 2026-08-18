@@ -72,7 +72,7 @@ add_filter( 'my_apps_plugins', function( $apps ) {
 	$apps['chat-to-blog'] = array(
 		'name'     => 'Chat to Blog',
 		'url'      => chat_to_blog_get_media_browser_url(),
-		'dashicon' => 'dashicons-format-chat',
+		'icon_url' => plugins_url( 'assets/icon.svg', __FILE__ ),
 	);
 	return $apps;
 } );
