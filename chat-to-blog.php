@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Chat to Blog
  * Description: Import media from Beeper chats and create blog posts
- * Version: 0.9.4
+ * Version: 0.9.4+c32e1f6a39e7
  * Author: Alex Kirk
  * Author URI: https://alex.kirk.at/
  * License: GPL v2 or later
