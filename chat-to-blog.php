@@ -70,9 +70,13 @@ function chat_to_blog_get_media_browser_url() {
 
 add_filter( 'my_apps_plugins', function( $apps ) {
 	$apps['chat-to-blog'] = array(
-		'name'     => 'Chat to Blog',
-		'url'      => chat_to_blog_get_media_browser_url(),
-		'icon_url' => plugins_url( 'assets/icon.svg', __FILE__ ),
+		'name'            => 'Chat to Blog',
+		'url'             => chat_to_blog_get_media_browser_url(),
+		// Same tile as the WordPress/blueprints catalog entry.
+		'dashicon'        => 'dashicons-format-status',
+		'icon_background' => 'linear-gradient(135deg, #00b09b, #96c93d)',
+		'icon_color'      => '#fff',
+		'icon_shadow'     => true,
 	);
 	return $apps;
 } );
