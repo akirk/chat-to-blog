@@ -25,17 +25,17 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 	<?php if ( ! $is_configured ) : ?>
 		<div class="ctb-setup-needed">
 			<div class="ctb-setup-icon">🔗</div>
-			<h2><?php esc_html_e( 'Connect to Beeper', 'chat-to-blog' ); ?></h2>
-			<p><?php esc_html_e( 'To browse media from your group chats, you need to connect your Beeper account first.', 'chat-to-blog' ); ?></p>
+			<h2><?php esc_html_e( 'Connect Beeper Desktop', 'chat-to-blog' ); ?></h2>
+			<p><?php esc_html_e( 'Chat to Blog uses Beeper Desktop as a private bridge to your chat apps. Once Beeper is connected to Signal, WhatsApp, or another network, this plugin can browse the photos and videos from those chats and save selected media to WordPress.', 'chat-to-blog' ); ?></p>
 			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="button button-primary button-hero">
-				<?php esc_html_e( 'Set Up Beeper Connection', 'chat-to-blog' ); ?>
+				<?php esc_html_e( 'Set Up Beeper Desktop', 'chat-to-blog' ); ?>
 			</a>
 		</div>
 	<?php else : ?>
 		<div id="ctb-connection-error" class="ctb-setup-needed" style="display:none;">
 			<div class="ctb-setup-icon">🔌</div>
 			<h2><?php esc_html_e( 'Can’t reach Beeper Desktop', 'chat-to-blog' ); ?></h2>
-			<p><?php esc_html_e( 'The Beeper Desktop API only listens on localhost, so this page needs to be open on the same machine where Beeper Desktop is running. Make sure Beeper Desktop is running, then try again.', 'chat-to-blog' ); ?></p>
+			<p><?php esc_html_e( 'Chat media is read from Beeper’s local API, so this page needs to be open on the same computer where Beeper Desktop is running. Make sure Beeper Desktop is open and the Desktop API is enabled, then try again.', 'chat-to-blog' ); ?></p>
 			<p>
 				<button type="button" id="ctb-retry-connection" class="button button-primary"><?php esc_html_e( 'Retry' ); ?></button>
 				<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="button"><?php esc_html_e( 'View setup guide', 'chat-to-blog' ); ?></a>
