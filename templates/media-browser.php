@@ -18,7 +18,7 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 		<h1>
 			<?php esc_html_e( 'Chat to Blog', 'chat-to-blog' ); ?>
 			<span class="ctb-post-type-heading"><?php echo esc_html( $current_post_type_label ); ?></span>
-			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Settings' ); ?></a>
+			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Settings', 'chat-to-blog' ); ?></a>
 		</h1>
 	</div>
 
@@ -37,7 +37,7 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 			<h2><?php esc_html_e( 'Can’t reach Beeper Desktop', 'chat-to-blog' ); ?></h2>
 			<p><?php esc_html_e( 'The Beeper Desktop API only listens on localhost, so this page needs to be open on the same machine where Beeper Desktop is running. Make sure Beeper Desktop is running, then try again.', 'chat-to-blog' ); ?></p>
 			<p>
-				<button type="button" id="ctb-retry-connection" class="button button-primary"><?php esc_html_e( 'Retry' ); ?></button>
+				<button type="button" id="ctb-retry-connection" class="button button-primary"><?php esc_html_e( 'Retry', 'chat-to-blog' ); ?></button>
 				<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="button"><?php esc_html_e( 'View setup guide', 'chat-to-blog' ); ?></a>
 			</p>
 		</div>
@@ -94,26 +94,26 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 						</div>
 
 						<div class="ctb-form-group">
-							<label for="ctb-post-title"><?php esc_html_e( 'Title' ); ?></label>
+							<label for="ctb-post-title"><?php esc_html_e( 'Title', 'chat-to-blog' ); ?></label>
 							<input type="text" id="ctb-post-title" placeholder="<?php esc_attr_e( 'Enter post title...', 'chat-to-blog' ); ?>" />
 						</div>
 
 						<div class="ctb-form-group">
-							<label for="ctb-post-content"><?php esc_html_e( 'Text' ); ?></label>
+							<label for="ctb-post-content"><?php esc_html_e( 'Text', 'chat-to-blog' ); ?></label>
 							<textarea id="ctb-post-content" rows="4" placeholder="<?php esc_attr_e( 'Add some text (optional)...', 'chat-to-blog' ); ?>"></textarea>
 						</div>
 
 						<div class="ctb-form-group ctb-date-group">
-							<label for="ctb-post-date"><?php esc_html_e( 'Date' ); ?></label>
+							<label for="ctb-post-date"><?php esc_html_e( 'Date', 'chat-to-blog' ); ?></label>
 							<input type="datetime-local" id="ctb-post-date" />
-							<a href="#" id="ctb-date-now"><?php esc_html_e( 'Now' ); ?></a>
+							<a href="#" id="ctb-date-now"><?php esc_html_e( 'Now', 'chat-to-blog' ); ?></a>
 						</div>
 
 						<?php if ( ! empty( $categories ) ) : ?>
 						<div class="ctb-form-group" id="ctb-post-category-group">
-							<label for="ctb-post-category"><?php esc_html_e( 'Category' ); ?></label>
+							<label for="ctb-post-category"><?php esc_html_e( 'Category', 'chat-to-blog' ); ?></label>
 							<select id="ctb-post-category">
-								<option value=""><?php esc_html_e( 'None' ); ?></option>
+								<option value=""><?php esc_html_e( 'None', 'chat-to-blog' ); ?></option>
 								<?php foreach ( $categories as $category ) : ?>
 									<option value="<?php echo esc_attr( $category->term_id ); ?>">
 										<?php echo esc_html( $category->name ); ?>
@@ -128,7 +128,7 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 							<div class="ctb-format-options">
 								<label class="ctb-radio">
 									<input type="radio" name="ctb-format" value="gallery" />
-									<?php esc_html_e( 'Gallery' ); ?>
+									<?php esc_html_e( 'Gallery', 'chat-to-blog' ); ?>
 								</label>
 								<label class="ctb-radio">
 									<input type="radio" name="ctb-format" value="blocks" checked />
@@ -138,8 +138,8 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 						</div>
 
 						<div class="ctb-post-actions">
-							<button type="button" id="ctb-save-draft" class="button" disabled><?php esc_html_e( 'Save Draft' ); ?></button>
-							<button type="button" id="ctb-publish" class="button button-primary" disabled><?php esc_html_e( 'Publish' ); ?></button>
+							<button type="button" id="ctb-save-draft" class="button" disabled><?php esc_html_e( 'Save Draft', 'chat-to-blog' ); ?></button>
+							<button type="button" id="ctb-publish" class="button button-primary" disabled><?php esc_html_e( 'Publish', 'chat-to-blog' ); ?></button>
 						</div>
 
 						<div id="ctb-post-status"></div>

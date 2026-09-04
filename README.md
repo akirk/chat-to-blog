@@ -1,10 +1,23 @@
 # Chat to Blog
 
-A WordPress plugin that imports media from Beeper chat conversations and creates blog posts from them.
+- Contributors: akirk
+- Tags: beeper, chat, media, import, gallery
+- Requires at least: 6.0
+- Requires PHP: 7.4
+- Tested up to: 7.1
+- Stable tag: 0.9.4
+- License: GPL-2.0-or-later
+- License URI: https://www.gnu.org/licenses/gpl-2.0.html
+
+Import photos and videos from your Beeper chats and turn them into WordPress posts with gallery or individual media blocks.
 
 ## Description
 
 Chat to Blog connects to the Beeper Desktop local API to browse images and videos from your chat conversations. Select media items, arrange them as you like, and publish them directly as WordPress blog posts with gallery or individual image blocks.
+
+Pick a chat from the horizontal chat bar, scroll or jump to a month in the timeline, and click the pictures you want. Selected media collects in a panel on the right where you can drag it into the order you want, give the post a title and some text, choose a category and a date, and then save a draft or publish. Everything you pick is imported into the WordPress Media Library along with the caption, sender and timestamp from the chat, and the post is built from standard Gutenberg image, gallery and video blocks — so the result is an ordinary WordPress post you can keep editing in the block editor.
+
+Because Beeper Desktop's API only listens on localhost, the browser talks to it directly and hands the media to WordPress, which means the WordPress site itself never needs network access to your chats.
 
 ### Features
 
@@ -19,14 +32,14 @@ Chat to Blog connects to the Beeper Desktop local API to browse images and video
 - Mixed galleries: images grouped in gallery, videos added as separate blocks
 - Automatic duplicate detection (won't re-import the same media twice)
 - Set custom post dates for backdated publishing
+- Import media into the Media Library without creating a post
+- Choose which post types Chat to Blog appears on and can post to
 - Media is imported to the WordPress Media Library with full metadata
 
-## Requirements
+### Requirements
 
-- WordPress 5.0 or higher
-- PHP 7.4 or higher
-- [Beeper Desktop](https://www.beeper.com/) running on the same machine as WordPress
-- Beeper API token (generated from Beeper Desktop settings)
+- [Beeper Desktop](https://www.beeper.com/) running on the same machine as the browser you use for WordPress
+- A Beeper API token (generated from Beeper Desktop settings)
 
 ## Installation
 
@@ -34,76 +47,58 @@ Chat to Blog connects to the Beeper Desktop local API to browse images and video
 2. Activate the plugin through the WordPress admin
 3. Go to **Settings > Chat to Blog** to configure your Beeper connection
 
-## Configuration
-
 ### Beeper API Token
 
 1. Open **Beeper Desktop** on your computer
 2. Go to **Settings** (gear icon)
 3. Click **Developers** in the sidebar
-4. Scroll to **Approved connections** and click the **+** button
-5. Paste the token in the Chat to Blog settings page
+4. Turn on the **Beeper Desktop API** toggle (the API starts on `localhost:23373`)
+5. Scroll to **Approved connections** and click the **+** button to generate a token
+6. Paste the token in the Chat to Blog settings page
 
-## Usage
+## Frequently Asked Questions
 
-1. Go to **Posts > Chat to Blog** in the WordPress admin
-2. Select a chat from the horizontal chat list at the top
-3. Click on images to select them (they appear in the right panel)
-4. Drag to reorder images if needed
-5. Enter a post title and optional text content
-6. Choose between Gallery or Individual images format
-7. Click **Save Draft** or **Publish**
+### How do I create a post?
 
-### Tips
+Go to **Posts > Chat to Blog** in the WordPress admin, select a chat from the horizontal chat list at the top, click images to select them (they appear in the right panel), drag to reorder them if needed, enter a post title and optional text, choose between the Gallery and Individual images format, and click **Save Draft** or **Publish**.
 
-- Already-imported media shows a dimmed overlay
-- Videos are marked with a play icon and "VIDEO" badge
-- When using Gallery format with mixed media, images are grouped in the gallery and videos are added below as individual blocks
-- Click "Load More" to fetch older messages from a chat
-- Set a custom date to backdate posts
+### Does my WordPress site need to reach Beeper?
 
-## How It Works
+No. The Beeper Desktop API only listens on localhost, so the media is fetched by your browser and passed to WordPress from there. This does mean the admin page has to be open on the same machine where Beeper Desktop is running.
 
-1. The plugin communicates with Beeper Desktop's local API at `localhost:23373`
-2. Chat messages and media metadata are fetched via the API
-3. When creating a post, media is transferred as base64 data through the browser
-4. The plugin imports media to the WordPress Media Library
-5. Posts are created with Gutenberg image/gallery blocks
+### Will the same picture be imported twice?
 
-## Translations
+No. Every imported attachment stores the chat media identifier it came from, and already-imported media is shown with a dimmed overlay so you can see at a glance what has been used before.
 
-The plugin is fully translatable. To create translations:
+### Can I post to a custom post type?
 
-1. Use a tool like [Poedit](https://poedit.net/) or WP-CLI to generate a `.pot` file
-2. Create translations in the `languages/` directory
-3. Name files as `chat-to-blog-{locale}.po` and `chat-to-blog-{locale}.mo`
+Yes. On the settings page you can enable any public post type. Chat to Blog then appears in that post type's menu and can create entries of that type.
 
-For JavaScript translations, the plugin uses `wp_set_script_translations()`. Generate a JSON file with:
+### How are videos handled?
 
-```bash
-wp i18n make-json languages/chat-to-blog-{locale}.po --no-purge
-```
+Videos are marked with a play icon and a "VIDEO" badge in the browser. They are imported to the Media Library like images and embedded as native WordPress video blocks with controls. When using the Gallery format with mixed media, the images are grouped in the gallery and the videos are added below as individual blocks.
 
-## File Structure
+### How do I load older media?
 
-```
-chat-to-blog/
-├── chat-to-blog.php          # Main plugin file
-├── includes/
-│   ├── class-admin.php       # Admin pages and AJAX handlers
-│   ├── class-beeper-api.php  # Beeper Desktop API client
-│   └── class-media-importer.php  # Media Library import logic
-├── templates/
-│   ├── settings.php          # Settings page template
-│   └── media-browser.php     # Media browser page template
-├── assets/
-│   ├── admin.js              # Main admin JavaScript
-│   ├── admin.css             # Admin styles
-│   ├── beeper-client.js      # Browser-side Beeper API client
-│   └── sortable.min.js       # SortableJS for drag-and-drop
-└── languages/                # Translation files (.po, .mo, .json)
-```
+Scroll to the end of a chat's media to fetch older messages, or use the timeline above the grid to jump straight to a month.
 
-## License
+### Can I import media without creating a post?
 
-GPL v2 or later
+Yes. Select the media and use **Import Without Posting** to add it to the Media Library only.
+
+### How can I translate the plugin?
+
+The plugin is fully translatable. Generate a `.pot` file with a tool like [Poedit](https://poedit.net/) or WP-CLI, put translations in the `languages/` directory named `chat-to-blog-{locale}.po` and `.mo`, and generate the JSON file used for the JavaScript strings with `wp i18n make-json languages/chat-to-blog-{locale}.po --no-purge`.
+
+## Screenshots
+
+1. Browsing chat media and composing a post from the selected images.
+
+## Changelog
+
+### 0.9.4
+- Match the launcher icon to the catalog entry.
+- Improved Beeper onboarding and a clearer error when Beeper Desktop cannot be reached.
+- Timeline for jumping to a month within a chat.
+- Import media without creating a post.
+- Support for multiple post types.

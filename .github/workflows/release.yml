@@ -17,7 +17,7 @@ jobs:
       - name: Create plugin zip
         run: |
           mkdir -p build
-          rsync -av --exclude='build' --exclude='.git' --exclude='.github' --exclude='IDEAS.md' . build/chat-to-blog/
+          rsync -av --exclude='build' --exclude='.git' --exclude='.github' --exclude='.wordpress-org' --exclude='AGENTS.md' --exclude='IDEAS.md' . build/chat-to-blog/
           cd build && zip -r chat-to-blog.zip chat-to-blog
 
       - name: Upload release asset
