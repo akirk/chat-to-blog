@@ -249,7 +249,7 @@ class BeeperAPI {
 
 		$first = $first_names[ $sum % count( $first_names ) ];
 
-		if ( ! empty( $last_names ) && str_contains( trim( $name ), ' ' ) ) {
+		if ( ! empty( $last_names ) && strpos( trim( $name ), ' ' ) !== false ) {
 			return $first . ' ' . $last_names[ ( $sum * 7 + 3 ) % count( $last_names ) ];
 		}
 

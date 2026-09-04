@@ -1,11 +1,16 @@
 <?php
 /**
  * Plugin Name: Chat to Blog
- * Description: Import media from Beeper chats and create blog posts
+ * Plugin URI: https://github.com/akirk/chat-to-blog
+ * Description: Import photos and videos from your Beeper chats and turn them into WordPress posts with gallery or individual media blocks.
  * Version: 0.9.4
+ * Requires at least: 6.0
+ * Tested up to: 7.1
+ * Requires PHP: 7.4
  * Author: Alex Kirk
  * Author URI: https://alex.kirk.at/
- * License: GPL v2 or later
+ * License: GPL-2.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: chat-to-blog
  */
 
@@ -22,8 +27,6 @@ require_once CHAT_TO_BLOG_PATH . 'includes/class-media-importer.php';
 require_once CHAT_TO_BLOG_PATH . 'includes/class-admin.php';
 
 function chat_to_blog_init() {
-	load_plugin_textdomain( 'chat-to-blog', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
-
 	$admin = new ChatToBlog\Admin();
 	$admin->init();
 }
@@ -37,8 +40,9 @@ register_activation_hook( __FILE__, 'chat_to_blog_activate' );
 function chat_to_blog_redirect_after_activation() {
 	if ( get_option( 'chat_to_blog_do_activation_redirect', false ) ) {
 		delete_option( 'chat_to_blog_do_activation_redirect' );
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only tests for the presence of the core-supplied bulk activation flag; no input is processed.
 		if ( ! isset( $_GET['activate-multi'] ) ) {
-			wp_redirect( admin_url( 'admin.php?page=chat-to-blog-settings' ) );
+			wp_safe_redirect( admin_url( 'admin.php?page=chat-to-blog-settings' ) );
 			exit;
 		}
 	}
