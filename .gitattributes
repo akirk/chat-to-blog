@@ -1,0 +1,18 @@
+# Git/CI
+.git* export-ignore
+.github export-ignore
+.agents export-ignore
+.codex export-ignore
+
+# IDE/Editor
+.vscode export-ignore
+.claude export-ignore
+
+# Agent/developer documentation
+AGENTS.md export-ignore
+
+# WordPress.org assets (deployed to the SVN assets/ directory, not shipped)
+.wordpress-org export-ignore
+
+# Misc
+.DS_Store export-ignore
