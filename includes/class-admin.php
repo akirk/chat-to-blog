@@ -123,7 +123,7 @@ class Admin {
 		$current_post_type_object = get_post_type_object( $current_post_type );
 
 		if ( ! $current_post_type_object ) {
-			wp_die( __( 'Invalid post type.' ) );
+			wp_die( esc_html__( 'Invalid post type.', 'chat-to-blog' ) );
 		}
 
 		$current_post_type_label = $current_post_type_object->labels->singular_name;
@@ -175,7 +175,12 @@ class Admin {
 	}
 
 	private function get_current_post_type() {
-		$post_type = sanitize_key( $_GET['post_type'] ?? '' );
+		$post_type = '';
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing of the admin menu screen; nothing is changed here.
+		if ( isset( $_GET['post_type'] ) && is_string( $_GET['post_type'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- See above.
+			$post_type = sanitize_key( wp_unslash( $_GET['post_type'] ) );
+		}
 		$enabled_post_types = $this->get_enabled_post_types();
 
 		if ( ! empty( $post_type ) ) {
@@ -247,7 +252,7 @@ class Admin {
 			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
 		}
 
-		$token = sanitize_text_field( $_POST['token'] ?? '' );
+		$token = isset( $_POST['token'] ) ? sanitize_text_field( wp_unslash( $_POST['token'] ) ) : '';
 		$this->beeper->set_token( $token );
 
 		if ( ! empty( $token ) ) {
@@ -277,7 +282,7 @@ class Admin {
 			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
 		}
 
-		$post_types = wp_unslash( $_POST['post_types'] ?? [] );
+		$post_types = isset( $_POST['post_types'] ) ? array_map( 'sanitize_key', (array) wp_unslash( $_POST['post_types'] ) ) : [];
 		$post_types = $this->sanitize_post_type_list( $post_types );
 
 		update_option( 'chat_to_blog_enabled_post_types', $post_types );
@@ -291,7 +296,7 @@ class Admin {
 	public function ajax_get_chats() {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
-		$type = sanitize_text_field( $_POST['type'] ?? 'all' );
+		$type = isset( $_POST['type'] ) ? sanitize_text_field( wp_unslash( $_POST['type'] ) ) : 'all';
 
 		if ( $type === 'group' ) {
 			$result = $this->beeper->get_group_chats();
@@ -323,8 +328,8 @@ class Admin {
 	public function ajax_get_media() {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
-		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
-		$cursor = sanitize_text_field( $_POST['cursor'] ?? '' );
+		$chat_id = isset( $_POST['chat_id'] ) ? sanitize_text_field( wp_unslash( $_POST['chat_id'] ) ) : '';
+		$cursor = isset( $_POST['cursor'] ) ? sanitize_text_field( wp_unslash( $_POST['cursor'] ) ) : '';
 		$limit = intval( $_POST['limit'] ?? 50 );
 
 		if ( empty( $chat_id ) ) {
@@ -390,9 +395,8 @@ class Admin {
 			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
 		}
 
-		$images_json = stripslashes( $_POST['images'] ?? '[]' );
-		$images = json_decode( $images_json, true );
-		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
+		$images = $this->get_posted_media_payload();
+		$chat_id = isset( $_POST['chat_id'] ) ? sanitize_text_field( wp_unslash( $_POST['chat_id'] ) ) : '';
 
 		if ( empty( $images ) || ! is_array( $images ) ) {
 			wp_send_json_error( __( 'No media selected', 'chat-to-blog' ) );
@@ -427,16 +431,15 @@ class Admin {
 		}
 
 		$post_id = intval( $_POST['post_id'] ?? 0 );
-		$title = sanitize_text_field( $_POST['title'] ?? '' );
-		$content = wp_kses_post( $_POST['content'] ?? '' );
-		$format = sanitize_text_field( $_POST['format'] ?? 'gallery' );
-		$status = sanitize_text_field( $_POST['status'] ?? 'draft' );
-		$post_type = sanitize_key( $_POST['post_type'] ?? $this->get_current_post_type() );
-		$post_date = sanitize_text_field( $_POST['post_date'] ?? '' );
+		$title = isset( $_POST['title'] ) ? sanitize_text_field( wp_unslash( $_POST['title'] ) ) : '';
+		$content = isset( $_POST['content'] ) ? wp_kses_post( wp_unslash( $_POST['content'] ) ) : '';
+		$format = isset( $_POST['format'] ) ? sanitize_text_field( wp_unslash( $_POST['format'] ) ) : 'gallery';
+		$status = isset( $_POST['status'] ) ? sanitize_text_field( wp_unslash( $_POST['status'] ) ) : 'draft';
+		$post_type = isset( $_POST['post_type'] ) ? sanitize_key( wp_unslash( $_POST['post_type'] ) ) : $this->get_current_post_type();
+		$post_date = isset( $_POST['post_date'] ) ? sanitize_text_field( wp_unslash( $_POST['post_date'] ) ) : '';
 		$category = intval( $_POST['category'] ?? 0 );
-		$images_json = stripslashes( $_POST['images'] ?? '[]' );
-		$images = json_decode( $images_json, true );
-		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
+		$images = $this->get_posted_media_payload();
+		$chat_id = isset( $_POST['chat_id'] ) ? sanitize_text_field( wp_unslash( $_POST['chat_id'] ) ) : '';
 
 		if ( empty( $title ) ) {
 			wp_send_json_error( __( 'Title is required', 'chat-to-blog' ) );
@@ -600,6 +603,23 @@ class Admin {
 			'images'   => $imported_images,
 			'errors'   => $import_errors,
 		] );
+	}
+
+	/**
+	 * Read the selected media from the request.
+	 *
+	 * The browser posts the selection as a JSON string because each item carries a
+	 * base64 data URL. The individual fields are sanitized in
+	 * import_selected_media_payloads() once the JSON has been decoded.
+	 *
+	 * @return array
+	 */
+	private function get_posted_media_payload() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- The calling AJAX handlers verify the nonce with check_ajax_referer(); the JSON payload is decoded and every field is sanitized in import_selected_media_payloads().
+		$images_json = isset( $_POST['images'] ) && is_string( $_POST['images'] ) ? wp_unslash( $_POST['images'] ) : '[]';
+		$images = json_decode( $images_json, true );
+
+		return is_array( $images ) ? $images : [];
 	}
 
 	private function import_selected_media_payloads( $images, $base_filename = '', $chat_id = '' ) {
