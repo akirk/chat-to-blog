@@ -93,6 +93,7 @@ The plugin is fully translatable. Generate a `.pot` file with a tool like [Poedi
 ## Screenshots
 
 1. Browsing chat media and composing a post from the selected images.
+2. The settings screen on a phone: the Beeper connection steps and the API token field, one column deep.
 
 ## Changelog
 
