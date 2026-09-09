@@ -3,7 +3,7 @@
  * Plugin Name: Chat to Blog
  * Plugin URI: https://github.com/akirk/chat-to-blog
  * Description: Import photos and videos from your Beeper chats and turn them into WordPress posts with gallery or individual media blocks.
- * Version: 0.9.4
+ * Version: 0.9.4+33a5727d58f0
  * Requires at least: 6.0
  * Tested up to: 7.1
  * Requires PHP: 7.4
