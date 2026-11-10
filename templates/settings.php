@@ -21,14 +21,15 @@ $token = $beeper->get_token();
 
 	<?php if ( ! $is_configured ) : ?>
 	<div class="ctb-welcome">
-		<h2><?php esc_html_e( 'Welcome to Chat to Blog!', 'chat-to-blog' ); ?></h2>
-		<p><?php esc_html_e( 'This plugin lets you create blog posts from images shared in your Beeper group chats.', 'chat-to-blog' ); ?></p>
+		<h2><?php esc_html_e( 'Save chat memories in WordPress', 'chat-to-blog' ); ?></h2>
+		<p><?php esc_html_e( 'Photos and videos often arrive in Signal, WhatsApp, and other group chats. Chat to Blog helps you pick those moments and turn them into WordPress posts, with the media saved to your own Media Library.', 'chat-to-blog' ); ?></p>
+		<p><?php esc_html_e( 'To access those chats privately, this plugin uses Beeper Desktop as a local bridge. Beeper connects to your chat apps on this computer, and Chat to Blog reads from Beeper only after you approve the local API connection.', 'chat-to-blog' ); ?></p>
 	</div>
 	<?php endif; ?>
 
 	<div class="ctb-card">
 		<h2>
-			<?php esc_html_e( 'Beeper Connection', 'chat-to-blog' ); ?>
+			<?php esc_html_e( 'Connect Beeper Desktop', 'chat-to-blog' ); ?>
 			<?php if ( $is_configured ) : ?>
 				<span id="ctb-connection-badge" class="ctb-badge ctb-badge-warning"><?php esc_html_e( 'Checking…', 'chat-to-blog' ); ?></span>
 			<?php else : ?>
@@ -36,16 +37,34 @@ $token = $beeper->get_token();
 			<?php endif; ?>
 		</h2>
 
-		<p><?php esc_html_e( 'Connect to Beeper Desktop to access your group chat media.', 'chat-to-blog' ); ?></p>
+		<p><?php esc_html_e( 'Chat to Blog uses Beeper Desktop to access photos and videos from Signal, WhatsApp, and other chat apps. Beeper provides a local API for accessing this media, even when the chat app doesn’t offer one.', 'chat-to-blog' ); ?></p>
 
 		<div class="ctb-instructions">
-			<strong><?php esc_html_e( 'To enable the API and get a token:', 'chat-to-blog' ); ?></strong>
+			<h3><?php esc_html_e( 'Install and set up Beeper', 'chat-to-blog' ); ?></h3>
 			<ol>
-				<li><?php echo wp_kses( __( 'Make sure <strong>Beeper Desktop</strong> is running on this computer', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
-				<li><?php echo wp_kses( __( 'Open Beeper Desktop and go to <strong>Settings</strong> (gear icon)', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
+				<li>
+					<?php
+					echo wp_kses(
+						sprintf(
+							/* translators: %s: link to Beeper download page */
+							__( '%s on this computer.', 'chat-to-blog' ),
+							'<a href="https://www.beeper.com/download" target="_blank" rel="noopener">' . esc_html__( 'Install Beeper Desktop', 'chat-to-blog' ) . '</a>'
+						),
+						[ 'a' => [ 'href' => [], 'target' => [], 'rel' => [] ] ]
+					);
+					?>
+				</li>
+				<li><?php echo wp_kses( __( 'In Beeper, connect the chat networks you want to import from, such as <strong>Signal</strong> or <strong>WhatsApp</strong>.', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
+				<li><?php echo wp_kses( __( 'Keep <strong>Beeper Desktop</strong> running while you browse chat media in WordPress.', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
+			</ol>
+
+			<h3><?php esc_html_e( 'Enable the local Beeper API', 'chat-to-blog' ); ?></h3>
+			<ol>
+				<li><?php echo wp_kses( __( 'Open Beeper Desktop and go to <strong>Settings</strong> (gear icon).', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
 				<li><?php echo wp_kses( __( 'Click <strong>Developers</strong> in the sidebar', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
 				<li><?php echo wp_kses( __( 'Turn on the <strong>Beeper Desktop API</strong> toggle (the API starts on <code>localhost:23373</code>)', 'chat-to-blog' ), [ 'strong' => [], 'code' => [] ] ); ?></li>
 				<li><?php echo wp_kses( __( 'Scroll to <strong>Approved connections</strong> and click the <strong>+</strong> button to generate a token', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
+				<li><?php esc_html_e( 'Paste the token below and click Save Token, then Test Connection.', 'chat-to-blog' ); ?></li>
 			</ol>
 			<p>
 				<?php

@@ -13,7 +13,9 @@ Import photos and videos from your Beeper chats and turn them into WordPress pos
 
 ## Description
 
-Chat to Blog connects to the Beeper Desktop local API to browse images and videos from your chat conversations. Select media items, arrange them as you like, and publish them directly as WordPress blog posts with gallery or individual image blocks.
+Chat to Blog helps you save photos and videos that arrive in Signal, WhatsApp, and other group chats before they disappear into chat history. It connects to the Beeper Desktop local API, lets you browse chat media, and publishes selected items directly as WordPress posts with gallery or individual image/video blocks.
+
+Beeper Desktop acts as the local bridge. It connects to your chat apps as a desktop device, decrypts your chat media on your computer, and exposes a private API that this plugin can read after you approve it.
 
 Pick a chat from the horizontal chat bar, scroll or jump to a month in the timeline, and click the pictures you want. Selected media collects in a panel on the right where you can drag it into the order you want, give the post a title and some text, choose a category and a date, and then save a draft or publish. Everything you pick is imported into the WordPress Media Library along with the caption, sender and timestamp from the chat, and the post is built from standard Gutenberg image, gallery and video blocks — so the result is an ordinary WordPress post you can keep editing in the block editor.
 
@@ -21,7 +23,7 @@ Because Beeper Desktop's API only listens on localhost, the browser talks to it 
 
 ### Features
 
-- Browse all your Beeper chats and group conversations
+- Browse chats and group conversations connected through Beeper Desktop
 - View and select images and videos from chat messages
 - Support for multiple image formats: JPEG, PNG, GIF, WebP, HEIC/HEIF, AVIF, BMP, TIFF, SVG
 - Support for multiple video formats: MP4, MOV, WebM, AVI, MKV, 3GP
@@ -38,8 +40,9 @@ Because Beeper Desktop's API only listens on localhost, the browser talks to it 
 
 ### Requirements
 
-- [Beeper Desktop](https://www.beeper.com/) running on the same machine as the browser you use for WordPress
-- A Beeper API token (generated from Beeper Desktop settings)
+- [Beeper Desktop](https://www.beeper.com/download) running on the same machine where you use the WordPress admin
+- Signal, WhatsApp, or another chat network connected inside Beeper Desktop
+- Beeper API token (generated from Beeper Desktop settings)
 
 ## Installation
 
@@ -49,12 +52,14 @@ Because Beeper Desktop's API only listens on localhost, the browser talks to it 
 
 ### Beeper API Token
 
-1. Open **Beeper Desktop** on your computer
-2. Go to **Settings** (gear icon)
-3. Click **Developers** in the sidebar
-4. Turn on the **Beeper Desktop API** toggle (the API starts on `localhost:23373`)
-5. Scroll to **Approved connections** and click the **+** button to generate a token
-6. Paste the token in the Chat to Blog settings page
+1. Install [Beeper Desktop](https://www.beeper.com/download)
+2. Connect the chat networks you want to import from, such as Signal or WhatsApp
+3. Keep Beeper Desktop running on the same computer where you use the WordPress admin
+4. Open **Beeper Desktop** and go to **Settings** (gear icon)
+5. Click **Developers** in the sidebar
+6. Turn on **Beeper Desktop API** (the API starts on `localhost:23373`)
+7. Scroll to **Approved connections** and click the **+** button
+8. Paste the token in the Chat to Blog settings page
 
 ## Frequently Asked Questions
 
