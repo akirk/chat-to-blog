@@ -1,6 +1,6 @@
-Icons from Simple Icons 13.0.0: https://github.com/simple-icons/simple-icons/tree/13.0.0
+The Discord, Messenger, Signal, Slack, and WhatsApp icons were supplied by the user from SVG Repo (https://www.svgrepo.com/). Their original SVG metadata is preserved.
 
-Signal and WhatsApp icons have been adapted with colored backgrounds and white logos.
+The remaining icons are from Simple Icons 13.0.0: https://github.com/simple-icons/simple-icons/tree/13.0.0 and use the CC0 license below.
 
 # CC0 1.0 Universal
 
