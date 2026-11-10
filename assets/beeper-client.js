@@ -132,6 +132,13 @@ class BeeperClient {
 		return { success: true, data: { items: this.demoMode ? items.map(c => this._anonymizeChat(c)) : items } };
 	}
 
+	async focusMessage(chatId, messageId) {
+		return this.request('/focus', {
+			method: 'POST',
+			body: { chatID: chatId, messageID: messageId }
+		});
+	}
+
 	async getChat(chatId) {
 		return this.request('/chats/' + encodeURIComponent(chatId));
 	}
@@ -189,6 +196,8 @@ class BeeperClient {
 						const rawSender = msg.senderName || (msg.isSender ? 'You' : 'Unknown');
 						mediaItems.push({
 							id: att.id,
+							chatId: msg.chatID || chatId,
+							messageId: msg.id,
 							mxcUrl: att.id,
 							timestamp: msg.timestamp,
 							text: msg.text || '',

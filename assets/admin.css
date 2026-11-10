@@ -1493,3 +1493,35 @@
 	object-fit: contain;
 	flex-shrink: 0;
 }
+
+.ctb-media-failed.ctb-open-in-beeper {
+	cursor: pointer;
+}
+
+.ctb-open-in-beeper:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
+}
+
+.ctb-media-failure-note {
+	padding: 4px 8px;
+	margin: 12px;
+	background: #f5e6e6;
+}
+
+.ctb-media-failure-note p {
+	margin: 4px 0;
+}
+
+.ctb-media-failed-sender {
+	position: absolute;
+	bottom: 30px;
+	left: 8px;
+	right: 8px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 11px;
+	text-align: center;
+	pointer-events: none;
+}

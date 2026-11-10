@@ -309,14 +309,68 @@
 		});
 	}
 
+	var mediaFailureNoteTimer = null;
+
+	function scheduleMediaFailureNote() {
+		clearTimeout(mediaFailureNoteTimer);
+		mediaFailureNoteTimer = setTimeout(updateMediaFailureNote, 100);
+	}
+
+	function updateMediaFailureNote() {
+		var $failed = $('#ctb-media-grid .ctb-media-failed');
+		var $note = $('#ctb-media-failure-note').empty();
+		if (!$failed.length) {
+			$note.hide();
+			return;
+		}
+		var details = [sprintf(
+			/* translators: %d: number of failed media tiles */
+			_n('%d media item could not be loaded.', '%d media items could not be loaded.', $failed.length, 'chat-to-blog'),
+			$failed.length
+		)];
+		var reasons = new Map();
+		$failed.each(function() {
+			var reason = $(this).data('mediaFailureReason') || __('Beeper could not load this file.', 'chat-to-blog');
+			reasons.set(reason, (reasons.get(reason) || 0) + 1);
+		});
+		reasons.forEach(function(count, reason) {
+			details.push(sprintf(
+				/* translators: 1: failure reason, 2: number of affected media tiles */
+				__('%1$s (%2$d)', 'chat-to-blog'), reason, count
+			));
+		});
+		$note.attr('title', details.join('\n')).append($('<p>').text(__('Some media could not be loaded. This might be because the media file is not available on this computer. Retrying may help if the sender’s device is online and still has the file. Click a failed tile to open its message in Beeper, or use ↻ to retry loading it.', 'chat-to-blog'))).show();
+	}
+
 	function clearMediaErrorState($item) {
 		$item.removeClass('ctb-media-unavailable ctb-media-failed');
-		$item.find('.ctb-retry-btn, .ctb-unavailable-overlay').remove();
+		$item.removeData('mediaFailureReason');
+		scheduleMediaFailureNote();
+		if ($item.hasClass('ctb-open-in-beeper')) {
+			$item.removeClass('ctb-open-in-beeper').removeAttr('role tabindex aria-label');
+			var media = $item.data('media');
+			$item.attr('title', media && media.sender || __('Unknown sender', 'chat-to-blog'));
+		}
+		$item.find('.ctb-retry-btn, .ctb-unavailable-overlay, .ctb-media-failed-sender').remove();
 	}
 
 	function attachMediaErrorState($item, err, onRetry) {
 		clearMediaErrorState($item);
 		$item.addClass('ctb-media-failed');
+		$item.data('mediaFailureReason', err.detail || (err.isTimeout ? __('Loading timed out.', 'chat-to-blog') : err.message) || __('Beeper could not load this file.', 'chat-to-blog'));
+		scheduleMediaFailureNote();
+		var media = $item.data('media');
+		if ($item.hasClass('ctb-media-item') && media) {
+			$item.append($('<span class="ctb-media-failed-sender">')
+				.text(media.sender || __('Unknown sender', 'chat-to-blog')));
+		}
+		if ($item.hasClass('ctb-media-item') && media && media.chatId && media.messageId) {
+			$item.addClass('ctb-open-in-beeper').attr({
+				role: 'button', tabindex: '0',
+				title: (media.sender || __('Unknown sender', 'chat-to-blog')) + ' — ' + __('Open message in Beeper', 'chat-to-blog'),
+				'aria-label': __('Open message in Beeper', 'chat-to-blog')
+			});
+		}
 
 		if (err.permanent) {
 			$item.addClass('ctb-media-unavailable');
@@ -511,6 +565,8 @@
 			loadChatList();
 			restoreFormatPreference();
 		}
+		var grid = document.getElementById('ctb-media-grid');
+		if (grid) new MutationObserver(scheduleMediaFailureNote).observe(grid, { childList: true });
 		probeConnectionBadge();
 	});
 
@@ -1121,10 +1177,14 @@
 						if (att.type !== 'img' && att.type !== 'video') continue;
 						newItems.push({
 							id: att.id,
+							chatId: msg.chatID || currentChatId,
+							messageId: msg.id,
 							mxcUrl: att.id,
 							timestamp: msg.timestamp,
 							text: msg.text || '',
-							sender: msg.senderName || (msg.isSender ? 'You' : 'Unknown'),
+							sender: config.demoMode && !msg.isSender && msg.senderName
+								? beeper._fakeName(msg.senderName)
+								: msg.senderName || (msg.isSender ? 'You' : 'Unknown'),
 							mimeType: att.mimeType,
 							fileName: att.fileName,
 							sortKey: msg.sortKey,
@@ -1354,9 +1414,10 @@
 				$item.addClass('imported');
 			}
 
+			$item.attr('title', item.sender || __('Unknown sender', 'chat-to-blog'));
 			if (item.timestamp) {
 				var date = new Date(item.timestamp);
-				$item.append('<div class="ctb-media-date">' + date.toLocaleDateString() + '</div>');
+				$item.append($('<div class="ctb-media-date">').text(date.toLocaleDateString()));
 			}
 
 			$container.append($item);
@@ -1365,10 +1426,39 @@
 		return stats;
 	}
 
+	function openFailedMediaInBeeper($item) {
+		var media = $item.data('media');
+		if (!media || !media.chatId || !media.messageId) {
+			showStatus('#ctb-media-open-status', __('The source message is missing. Reload the chat and try again.', 'chat-to-blog'), true);
+			return;
+		}
+		if ($item.data('openingBeeper')) return;
+		$('#ctb-media-open-status').empty();
+		$item.data('openingBeeper', true);
+		beeper.focusMessage(media.chatId, media.messageId).then(function(result) {
+			if (!result.success || !result.data || !result.data.success) {
+				showStatus('#ctb-media-open-status', __('Could not open the message in Beeper. Make sure Beeper Desktop is running and try again.', 'chat-to-blog'), true);
+			}
+		}).catch(function() {
+			showStatus('#ctb-media-open-status', __('Could not open the message in Beeper. Please try again.', 'chat-to-blog'), true);
+		}).finally(function() {
+			$item.removeData('openingBeeper');
+		});
+	}
+
+	$(document).on('keydown', '.ctb-open-in-beeper', function(e) {
+		if (e.target !== this || (e.key !== 'Enter' && e.key !== ' ')) return;
+		e.preventDefault();
+		openFailedMediaInBeeper($(this));
+	});
+
 	// Click on media item to add to selection
 	$(document).on('click', '.ctb-media-item', function() {
 		var $item = $(this);
-		if ($item.hasClass('ctb-media-failed')) return;
+		if ($item.hasClass('ctb-media-failed')) {
+			openFailedMediaInBeeper($item);
+			return;
+		}
 		var media = $item.data('media');
 
 		var existingIndex = -1;
@@ -1713,6 +1803,7 @@
 	$(document).on('dblclick', '.ctb-media-item', function(e) {
 		e.preventDefault();
 		e.stopPropagation();
+		if ($(this).hasClass('ctb-media-failed')) return;
 		var media = $(this).data('media');
 		openLightbox(media);
 	});
@@ -1724,6 +1815,10 @@
 		var $selectedThumb = $(this).closest('.ctb-selected-thumb');
 
 		if ($mediaItem.length) {
+			if ($mediaItem.hasClass('ctb-media-failed')) {
+				openFailedMediaInBeeper($mediaItem);
+				return;
+			}
 			openLightbox($mediaItem.data('media'));
 		} else if ($selectedThumb.length) {
 			openLightboxForSelected($selectedThumb.data('media'));
