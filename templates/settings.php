@@ -37,7 +37,7 @@ $token = $beeper->get_token();
 			<?php endif; ?>
 		</h2>
 
-		<p><?php esc_html_e( 'Chat to Blog uses Beeper Desktop to access photos and videos from Signal, WhatsApp, and other chat apps. Beeper connects to these services on your computer and provides the local API that Chat to Blog reads.', 'chat-to-blog' ); ?></p>
+		<p><?php esc_html_e( 'Chat to Blog uses Beeper Desktop to access photos and videos from Signal, WhatsApp, and other chat apps. Beeper provides a local API for accessing this media, even when the chat app doesn’t offer one.', 'chat-to-blog' ); ?></p>
 
 		<div class="ctb-instructions">
 			<strong><?php esc_html_e( 'Set up Beeper once:', 'chat-to-blog' ); ?></strong>
