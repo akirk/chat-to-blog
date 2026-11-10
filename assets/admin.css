@@ -869,6 +869,8 @@
 }
 
 .ctb-chat-pill {
+	box-sizing: border-box;
+	min-height: 36px;
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
@@ -1333,6 +1335,7 @@
 }
 
 .ctb-chat-choice .ctb-chat-pill {
+	min-height: 34px;
 	border: 0;
 	border-radius: 20px 0 0 20px;
 	padding-right: 8px;
@@ -1449,4 +1452,34 @@
 
 #ctb-collapsed-chat-count {
 	width: 80px;
+}
+
+.ctb-chat-network-icon {
+	box-sizing: border-box;
+	object-fit: contain;
+	border-radius: 0;
+	border: 0;
+	padding: 4px;
+	background: transparent;
+}
+
+#ctb-heading-collapse {
+	cursor: pointer;
+	border: 0;
+	padding: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+}
+
+#ctb-heading-collapse:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 3px;
+}
+
+.ctb-filter-network-icon {
+	width: 18px;
+	height: 18px;
+	object-fit: contain;
+	flex-shrink: 0;
 }

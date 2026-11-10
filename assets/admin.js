@@ -589,7 +589,66 @@
 		return chat.network || chatNetworks[chat.accountID || chat.accountId] || __('Unknown network', 'chat-to-blog');
 	}
 
+	var chatAvatarRequests = new Map();
+
+	function networkIcon(network) {
+		var icons = {
+			whatsapp: 'whatsapp', signal: 'signal', telegram: 'telegram',
+			messenger: 'messenger', facebookmessenger: 'messenger', facebook: 'facebook',
+			instagram: 'instagram', discord: 'discord', slack: 'slack',
+			googlemessages: 'googlemessages', googlesms: 'googlemessages',
+			matrix: 'matrix', linkedin: 'linkedin', twitter: 'x', x: 'x',
+			line: 'line', viber: 'viber', wechat: 'wechat', googlechat: 'googlechat',
+			imessage: 'apple'
+		};
+		network = network.toLowerCase().replace(/[^a-z0-9]/g, '');
+		return icons[network] || null;
+	}
+
+	function appendChatAvatar($item, chat) {
+		var icon = networkIcon(chatNetwork(chat));
+		if (icon && config.networkIconUrl) {
+			var $networkIcon = $('<img class="ctb-chat-avatar ctb-chat-network-icon" alt="">')
+				.attr('title', chatNetwork(chat));
+			$networkIcon.one('error', function() {
+				$networkIcon.remove();
+				if (!$item.find('.ctb-chat-avatar').length) $item.addClass('no-avatar');
+			});
+			$item.removeClass('no-avatar').prepend($networkIcon);
+			$networkIcon.attr('src', config.networkIconUrl + icon + '.svg');
+		}
+		var avatarUrl = chat.imgURL || chat.avatar || chat.avatarUrl || chat.profileImg;
+		if (config.demoMode || typeof avatarUrl !== 'string' || !avatarUrl) return;
+
+		// Keep the original filesystem path: fetchBlob encodes the query value.
+		if (avatarUrl.charAt(0) === '/') {
+			avatarUrl = 'file://' + avatarUrl;
+		}
+
+		// Rebuilding the filters/list must not start duplicate avatar downloads.
+		if (!chatAvatarRequests.has(avatarUrl)) {
+			chatAvatarRequests.set(avatarUrl, fetchImageAsDataUrl(avatarUrl).catch(function(err) {
+				chatAvatarRequests.delete(avatarUrl);
+				console.warn('Failed to load chat avatar:', err.status, err.code, err.detail || err.message);
+				return null;
+			}));
+		}
+		chatAvatarRequests.get(avatarUrl).then(function(dataUrl) {
+			if (!dataUrl) return;
+			var $image = $('<img class="ctb-chat-avatar" alt="">');
+			$image.one('load', function() {
+				$item.find('.ctb-chat-avatar').remove();
+				$item.removeClass('no-avatar').prepend($image);
+			});
+			$image.attr('src', dataUrl);
+		});
+	}
+
 	function renderChatList() {
+		$('#ctb-heading-collapse').attr({
+			'aria-expanded': String(chatsExpanded),
+			title: chatsExpanded ? __('Collapse chats', 'chat-to-blog') : __('Expand chats', 'chat-to-blog')
+		});
 		var $list = $('#ctb-chat-list').empty().toggleClass('ctb-chats-expanded', chatsExpanded);
 		var $chats = $('<div class="ctb-chat-items">');
 		if (!allChats.length) {
@@ -607,7 +666,13 @@
 			networks.sort().forEach(function(network) {
 				var $checkbox = $('<input type="checkbox" class="ctb-chat-network">')
 					.val(network).prop('checked', userSettings.excludedNetworks.indexOf(network) === -1);
-				$filters.append($('<label>').append($checkbox, document.createTextNode(network)));
+				var $label = $('<label>').append($checkbox);
+				var icon = networkIcon(network);
+				if (icon && config.networkIconUrl) {
+					$label.append($('<img class="ctb-filter-network-icon" alt="">')
+						.attr('src', config.networkIconUrl + icon + '.svg'));
+				}
+				$filters.append($label.append(document.createTextNode(network)));
 			});
 			$filters.append($('<label for="ctb-collapsed-chat-count" class="ctb-chat-count-label">')
 				.text(__('Chats when collapsed', 'chat-to-blog')));
@@ -629,6 +694,7 @@
 			var $wrapper = $('<span class="ctb-chat-choice">').toggleClass('ctb-chat-hidden', hidden || !matchesNetwork).toggleClass('ctb-chat-choice-collapsed', !chatsExpanded);
 			var $item = $('<button type="button" class="ctb-chat-pill no-avatar">')
 				.data('chat', chat).toggleClass('active', currentChatId === chat.id);
+			appendChatAvatar($item, chat);
 			$item.append($('<span class="ctb-chat-title">').text(title));
 			var label = sprintf(hidden ? __('Restore %s', 'chat-to-blog') : __('Hide %s', 'chat-to-blog'), title);
 			var $toggle = $('<button type="button" class="ctb-chat-visibility">')
@@ -646,6 +712,12 @@
 				.text('...'));
 		}
 	}
+
+	$(document).on('click', '#ctb-heading-collapse', function() {
+		if (!allChats.length) return;
+		chatsExpanded = !chatsExpanded;
+		renderChatList();
+	});
 
 	$(document).on('click', '#ctb-chats-more, #ctb-chats-close', function() {
 		chatsExpanded = !chatsExpanded;
