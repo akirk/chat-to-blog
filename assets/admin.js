@@ -687,11 +687,17 @@
 		});
 		var visible = matching.filter(function(chat) { return userSettings.hiddenChats.indexOf(chat.id) === -1; });
 		var displayed = chatsExpanded ? allChats : visible.slice(0, userSettings.collapsedChatCount);
+		if (!chatsExpanded && currentChatId && !displayed.some(function(chat) { return chat.id === currentChatId; })) {
+			var selectedChat = allChats.find(function(chat) { return chat.id === currentChatId; });
+			if (selectedChat) {
+				displayed = displayed.slice(0, userSettings.collapsedChatCount - 1).concat(selectedChat);
+			}
+		}
 		displayed.forEach(function(chat) {
 			var hidden = userSettings.hiddenChats.indexOf(chat.id) !== -1;
 			var title = chat.title || chat.name || __('Unknown', 'chat-to-blog');
 			var matchesNetwork = userSettings.excludedNetworks.indexOf(chatNetwork(chat)) === -1;
-			var $wrapper = $('<span class="ctb-chat-choice">').toggleClass('ctb-chat-hidden', hidden || !matchesNetwork).toggleClass('ctb-chat-choice-collapsed', !chatsExpanded);
+			var $wrapper = $('<span class="ctb-chat-choice">').toggleClass('ctb-chat-hidden', chatsExpanded && (hidden || !matchesNetwork)).toggleClass('ctb-chat-choice-collapsed', !chatsExpanded);
 			var $item = $('<button type="button" class="ctb-chat-pill no-avatar">')
 				.data('chat', chat).toggleClass('active', currentChatId === chat.id);
 			appendChatAvatar($item, chat);
@@ -764,6 +770,12 @@
 		$item.addClass('active');
 
 		currentChatId = chat.id;
+		if (chatsExpanded) {
+			chatsExpanded = false;
+			renderChatList();
+			var selectedButton = $('#ctb-chat-list .ctb-chat-pill.active')[0];
+			if (selectedButton) selectedButton.focus({ preventScroll: true });
+		}
 		currentCursor = null;
 		selectedMonth = null;
 		abortPendingViewFetches();
