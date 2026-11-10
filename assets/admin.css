@@ -1457,9 +1457,8 @@
 .ctb-chat-network-icon {
 	box-sizing: border-box;
 	object-fit: contain;
-	border-radius: 0;
-	border: 0;
-	padding: 1px;
+	border-radius: 50%;
+	padding: 4px;
 	background: #fff;
 }
 
