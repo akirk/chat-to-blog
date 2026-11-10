@@ -1473,3 +1473,10 @@
 	outline: 2px solid #2271b1;
 	outline-offset: 3px;
 }
+
+.ctb-filter-network-icon {
+	width: 18px;
+	height: 18px;
+	object-fit: contain;
+	flex-shrink: 0;
+}

@@ -591,7 +591,7 @@
 
 	var chatAvatarRequests = new Map();
 
-	function chatNetworkIcon(chat) {
+	function networkIcon(network) {
 		var icons = {
 			whatsapp: 'whatsapp', signal: 'signal', telegram: 'telegram',
 			messenger: 'messenger', facebookmessenger: 'messenger', facebook: 'facebook',
@@ -601,12 +601,12 @@
 			line: 'line', viber: 'viber', wechat: 'wechat', googlechat: 'googlechat',
 			imessage: 'apple'
 		};
-		var network = chatNetwork(chat).toLowerCase().replace(/[^a-z0-9]/g, '');
+		network = network.toLowerCase().replace(/[^a-z0-9]/g, '');
 		return icons[network] || null;
 	}
 
 	function appendChatAvatar($item, chat) {
-		var icon = chatNetworkIcon(chat);
+		var icon = networkIcon(chatNetwork(chat));
 		if (icon && config.networkIconUrl) {
 			var $networkIcon = $('<img class="ctb-chat-avatar ctb-chat-network-icon" alt="">')
 				.attr('title', chatNetwork(chat));
@@ -666,7 +666,13 @@
 			networks.sort().forEach(function(network) {
 				var $checkbox = $('<input type="checkbox" class="ctb-chat-network">')
 					.val(network).prop('checked', userSettings.excludedNetworks.indexOf(network) === -1);
-				$filters.append($('<label>').append($checkbox, document.createTextNode(network)));
+				var $label = $('<label>').append($checkbox);
+				var icon = networkIcon(network);
+				if (icon && config.networkIconUrl) {
+					$label.append($('<img class="ctb-filter-network-icon" alt="">')
+						.attr('src', config.networkIconUrl + icon + '.svg'));
+				}
+				$filters.append($label.append(document.createTextNode(network)));
 			});
 			$filters.append($('<label for="ctb-collapsed-chat-count" class="ctb-chat-count-label">')
 				.text(__('Chats when collapsed', 'chat-to-blog')));
