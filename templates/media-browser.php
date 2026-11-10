@@ -16,7 +16,7 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 <div class="wrap ctb-media-browser">
 	<div class="ctb-page-header">
 		<h1>
-			<?php esc_html_e( 'Chat to Blog', 'chat-to-blog' ); ?>
+			<button type="button" id="ctb-heading-collapse" aria-controls="ctb-chat-list" aria-expanded="false" title="<?php esc_attr_e( 'Expand chats', 'chat-to-blog' ); ?>"><?php esc_html_e( 'Chat to Blog', 'chat-to-blog' ); ?></button>
 			<span class="ctb-post-type-heading"><?php echo esc_html( $current_post_type_label ); ?></span>
 			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Settings', 'chat-to-blog' ); ?></a>
 		</h1>

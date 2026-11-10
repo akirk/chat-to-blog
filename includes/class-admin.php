@@ -99,6 +99,7 @@ class Admin {
 		wp_localize_script( 'chat-to-blog-beeper-client', 'BeeperClientConfig', $beeper_config );
 
 		wp_localize_script( 'chat-to-blog-admin', 'ctbConfig', [
+			'networkIconUrl'   => CHAT_TO_BLOG_URL . 'assets/network-icons/',
 			'userSettings'     => (object) ( get_user_meta( get_current_user_id(), 'chat_to_blog_user_settings', true ) ?: [] ),
 			'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
 			'nonce'            => wp_create_nonce( 'chat_to_blog' ),
@@ -352,7 +353,7 @@ class Admin {
 				'type'         => $chat['type'] ?? 'unknown',
 				'network'      => $chat['network'] ?? '',
 				'lastActivity' => $chat['lastActivity'] ?? '',
-				'avatar'       => $chat['avatar'] ?? $chat['avatarUrl'] ?? $chat['profileImg'] ?? '',
+				'avatar'       => $chat['imgURL'] ?? $chat['avatar'] ?? $chat['avatarUrl'] ?? $chat['profileImg'] ?? '',
 			];
 		}
 
