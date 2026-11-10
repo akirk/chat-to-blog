@@ -243,8 +243,17 @@ class BeeperAPI {
 		}
 
 		$sum = 0;
-		foreach ( mb_str_split( $name ) as $char ) {
-			$sum += mb_ord( $char );
+		// Decode UTF-8 code points without requiring mbstring or newer WP polyfills.
+		foreach ( preg_split( '//u', $name, -1, PREG_SPLIT_NO_EMPTY ) ?: [] as $char ) {
+			$length = strlen( $char );
+			$point  = ord( $char[0] );
+			if ( $length > 1 ) {
+				$point &= 0x7f >> $length;
+				for ( $i = 1; $i < $length; $i++ ) {
+					$point = ( $point << 6 ) | ( ord( $char[ $i ] ) & 0x3f );
+				}
+			}
+			$sum += $point;
 		}
 
 		$first = $first_names[ $sum % count( $first_names ) ];
