@@ -20,6 +20,8 @@ class Admin {
 		} );
 
 		add_action( 'admin_menu', [ $this, 'register_menus' ] );
+		add_action( 'admin_init', [ $this, 'redirect_legacy_media_browser' ] );
+		add_action( 'admin_bar_menu', [ $this, 'register_admin_bar_menu' ], 80 );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 
 		add_action( 'wp_ajax_ctb_test_connection', [ $this, 'ajax_test_connection' ] );
@@ -30,6 +32,27 @@ class Admin {
 		add_action( 'wp_ajax_ctb_get_media', [ $this, 'ajax_get_media' ] );
 		add_action( 'wp_ajax_ctb_import_media', [ $this, 'ajax_import_media' ] );
 		add_action( 'wp_ajax_ctb_create_post', [ $this, 'ajax_create_post' ] );
+	}
+
+	public function register_admin_bar_menu( $admin_bar ) {
+		if ( ! current_user_can( 'upload_files' ) ) {
+			return;
+		}
+
+		foreach ( $this->get_enabled_post_types() as $post_type ) {
+			$post_type_object = get_post_type_object( $post_type );
+			if ( ! $post_type_object || ! $post_type_object->show_ui || ! current_user_can( $post_type_object->cap->edit_posts ) ) {
+				continue;
+			}
+
+			$admin_bar->add_node( [
+				'id'     => 'chat-to-blog',
+				'parent' => 'new-content',
+				'title'  => __( 'Chat to Blog', 'chat-to-blog' ),
+				'href'   => $this->get_media_browser_url( $post_type ),
+			] );
+			break;
+		}
 	}
 
 	public function register_menus() {
@@ -44,7 +67,7 @@ class Admin {
 				__( 'Chat to Blog', 'chat-to-blog' ),
 				__( 'Chat to Blog', 'chat-to-blog' ),
 				$post_type_object->cap->edit_posts,
-				'chat-to-blog',
+				$this->get_media_browser_slug( $post_type ),
 				[ $this, 'render_media_browser' ]
 			);
 		}
@@ -140,6 +163,25 @@ class Admin {
 		return $post_type === 'post' ? 'edit.php' : 'edit.php?post_type=' . $post_type;
 	}
 
+	private function get_media_browser_slug( $post_type ) {
+		return $post_type === 'post' ? 'chat-to-blog' : 'chat-to-blog-' . $post_type;
+	}
+
+	public function redirect_legacy_media_browser() {
+		global $pagenow;
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect for legacy admin URLs.
+		if ( $pagenow !== 'edit.php' || ! isset( $_GET['page'] ) || $_GET['page'] !== 'chat-to-blog' ) {
+			return;
+		}
+		$post_type = $this->get_current_post_type();
+		if ( ! $post_type || $post_type === 'post' ) {
+			return;
+		}
+		wp_safe_redirect( $this->get_media_browser_url( $post_type ) );
+		exit;
+	}
+
 	private function get_media_browser_url( $post_type = '' ) {
 		if ( empty( $post_type ) || ! in_array( $post_type, $this->get_enabled_post_types(), true ) ) {
 			$enabled_post_types = $this->get_enabled_post_types();
@@ -150,7 +192,7 @@ class Admin {
 			return admin_url( 'edit.php?page=chat-to-blog' );
 		}
 
-		return admin_url( 'edit.php?post_type=' . $post_type . '&page=chat-to-blog' );
+		return admin_url( 'edit.php?post_type=' . $post_type . '&page=' . $this->get_media_browser_slug( $post_type ) );
 	}
 
 	private function get_available_post_types() {
