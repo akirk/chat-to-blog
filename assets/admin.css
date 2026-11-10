@@ -74,6 +74,16 @@
 	margin-bottom: 20px;
 }
 
+.ctb-instructions h3 {
+	font-size: 13px;
+	line-height: 1.5;
+	margin: 16px 0 6px;
+}
+
+.ctb-instructions h3:first-child {
+	margin-top: 0;
+}
+
 .ctb-instructions ol {
 	margin: 10px 0 0 20px;
 	padding: 0;
