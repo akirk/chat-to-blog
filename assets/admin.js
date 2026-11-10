@@ -514,15 +514,41 @@
 		probeConnectionBadge();
 	});
 
+	var userSettings = Object.assign({ hiddenChats: [], excludedNetworks: [], collapsedChatCount: 6 }, config.userSettings || {});
+	var settingsSaveQueue = Promise.resolve();
+	var allChats = [];
+	var chatsExpanded = false;
+	var chatNetworks = {};
+
+	function saveUserSettings(patch) {
+		Object.assign(userSettings, patch);
+		// Serialize writes so a slower request cannot overwrite a newer preference.
+		settingsSaveQueue = settingsSaveQueue.then(function() {
+			return $.post(config.ajaxUrl, {
+				action: 'ctb_save_user_settings', nonce: config.nonce,
+				settings: JSON.stringify(patch)
+			}).then(function(response) {
+				if (!response.success) throw new Error('Settings save failed');
+				$('#ctb-user-settings-error').remove();
+			});
+		}).catch(function() {
+			if (!$('#ctb-user-settings-error').length) {
+				$('<p id="ctb-user-settings-error" role="alert" class="ctb-error">')
+					.text(__('Could not save your preferences. Please try again.', 'chat-to-blog'))
+					.insertAfter('#ctb-chat-list');
+			}
+		});
+	}
+
 	function restoreFormatPreference() {
-		var saved = localStorage.getItem('ctb-format');
-		if (saved) {
+		var saved = userSettings.postFormat;
+		if (saved === 'gallery' || saved === 'blocks') {
 			$('input[name="ctb-format"][value="' + saved + '"]').prop('checked', true);
 		}
 	}
 
 	$(document).on('change', 'input[name="ctb-format"]', function() {
-		localStorage.setItem('ctb-format', $(this).val());
+		saveUserSettings({ postFormat: $(this).val() });
 	});
 
 	function loadChatList() {
@@ -533,7 +559,15 @@
 		beeper.getAllChats()
 			.then(function(result) {
 				if (result.success) {
-					renderChatList(result.data.items || []);
+					allChats = result.data.items || [];
+					renderChatList();
+					beeper.getAccounts().then(function(accounts) {
+						if (!accounts.success) return;
+						var items = accounts.data.items || accounts.data;
+						if (!Array.isArray(items)) return;
+						items.forEach(function(account) { chatNetworks[account.accountID || account.id] = account.network; });
+						renderChatList();
+					});
 				} else if (result.isConnectionError) {
 					$('#ctb-main-ui').hide();
 					$('#ctb-connection-error').show();
@@ -551,26 +585,106 @@
 		loadChatList();
 	});
 
-	function renderChatList(chats) {
-		var $list = $('#ctb-chat-list');
-		$list.empty();
+	function chatNetwork(chat) {
+		return chat.network || chatNetworks[chat.accountID || chat.accountId] || __('Unknown network', 'chat-to-blog');
+	}
 
-		if (chats.length === 0) {
-			$list.html('<span class="ctb-empty">' + __('No chats found', 'chat-to-blog') + '</span>');
+	function renderChatList() {
+		var $list = $('#ctb-chat-list').empty().toggleClass('ctb-chats-expanded', chatsExpanded);
+		var $chats = $('<div class="ctb-chat-items">');
+		if (!allChats.length) {
+			$list.append($('<span class="ctb-empty">').text(__('No chats found', 'chat-to-blog')));
 			return;
 		}
 
-		chats.forEach(function(chat) {
-			var $item = $('<button type="button" class="ctb-chat-pill">')
-				.data('chat', chat);
+		if (chatsExpanded) {
+			$list.append($('<button type="button" id="ctb-chats-close" class="ctb-chats-close">')
+				.attr({ 'aria-label': __('Collapse chats', 'chat-to-blog'), 'aria-expanded': 'true', 'aria-controls': 'ctb-chat-list' })
+				.text('×'));
+			var $filters = $('<fieldset class="ctb-chat-filters">')
+				.append($('<legend>').text(__('By network', 'chat-to-blog')));
+			var networks = Array.from(new Set(allChats.map(chatNetwork).concat(userSettings.excludedNetworks)));
+			networks.sort().forEach(function(network) {
+				var $checkbox = $('<input type="checkbox" class="ctb-chat-network">')
+					.val(network).prop('checked', userSettings.excludedNetworks.indexOf(network) === -1);
+				$filters.append($('<label>').append($checkbox, document.createTextNode(network)));
+			});
+			$filters.append($('<label for="ctb-collapsed-chat-count" class="ctb-chat-count-label">')
+				.text(__('Chats when collapsed', 'chat-to-blog')));
+			$filters.append($('<input type="number" id="ctb-collapsed-chat-count" min="1" max="200" step="1">')
+				.val(userSettings.collapsedChatCount));
+			$list.append($filters);
+		}
+		$list.append($chats);
 
-			$item.addClass('no-avatar');
-			$item.append($('<span class="ctb-chat-title">').text(chat.title || chat.name || __('Unknown', 'chat-to-blog')));
-			$list.append($item);
+		var matching = allChats.filter(function(chat) {
+			return userSettings.excludedNetworks.indexOf(chatNetwork(chat)) === -1;
 		});
+		var visible = matching.filter(function(chat) { return userSettings.hiddenChats.indexOf(chat.id) === -1; });
+		var displayed = chatsExpanded ? allChats : visible.slice(0, userSettings.collapsedChatCount);
+		displayed.forEach(function(chat) {
+			var hidden = userSettings.hiddenChats.indexOf(chat.id) !== -1;
+			var title = chat.title || chat.name || __('Unknown', 'chat-to-blog');
+			var matchesNetwork = userSettings.excludedNetworks.indexOf(chatNetwork(chat)) === -1;
+			var $wrapper = $('<span class="ctb-chat-choice">').toggleClass('ctb-chat-hidden', hidden || !matchesNetwork).toggleClass('ctb-chat-choice-collapsed', !chatsExpanded);
+			var $item = $('<button type="button" class="ctb-chat-pill no-avatar">')
+				.data('chat', chat).toggleClass('active', currentChatId === chat.id);
+			$item.append($('<span class="ctb-chat-title">').text(title));
+			var label = sprintf(hidden ? __('Restore %s', 'chat-to-blog') : __('Hide %s', 'chat-to-blog'), title);
+			var $toggle = $('<button type="button" class="ctb-chat-visibility">')
+				.data('chatId', chat.id).attr({ 'aria-label': label, title: label }).text(hidden ? '+' : '×');
+			$wrapper.append($item);
+			if (chatsExpanded) $wrapper.append($toggle);
+			$chats.append($wrapper);
+		});
+		if (!displayed.length) {
+			$chats.append($('<span class="ctb-empty">').text(__('No chats match your preferences.', 'chat-to-blog')));
+		}
+		if (!chatsExpanded) {
+			$chats.append($('<button type="button" id="ctb-chats-more" class="ctb-chat-pill no-avatar">')
+				.attr({ 'aria-expanded': String(chatsExpanded), 'aria-controls': 'ctb-chat-list', 'aria-label': __('More chats', 'chat-to-blog'), title: __('More chats', 'chat-to-blog') })
+				.text('...'));
+		}
 	}
 
-	$(document).on('click', '.ctb-chat-pill', function() {
+	$(document).on('click', '#ctb-chats-more, #ctb-chats-close', function() {
+		chatsExpanded = !chatsExpanded;
+		renderChatList();
+		var button = document.getElementById(chatsExpanded ? 'ctb-chats-close' : 'ctb-chats-more');
+		if (button) button.focus({ preventScroll: true });
+	});
+
+	$(document).on('change', '#ctb-collapsed-chat-count', function() {
+		if (!this.checkValidity() || !this.value) {
+			this.reportValidity();
+			return;
+		}
+		saveUserSettings({ collapsedChatCount: Number(this.value) });
+	});
+
+	$(document).on('change', '.ctb-chat-network', function() {
+		var value = $(this).val();
+		var excludedNetworks = $('.ctb-chat-network:not(:checked)').map(function() { return $(this).val(); }).get();
+		saveUserSettings({ excludedNetworks: excludedNetworks });
+		renderChatList();
+		var $focus = $('.ctb-chat-network').filter(function() { return $(this).val() === value; });
+		$focus.trigger('focus');
+	});
+
+	$(document).on('click', '.ctb-chat-visibility', function() {
+		var id = $(this).data('chatId');
+		var hidden = userSettings.hiddenChats.slice();
+		var index = hidden.indexOf(id);
+		if (index === -1) hidden.push(id);
+		else hidden.splice(index, 1);
+		saveUserSettings({ hiddenChats: hidden });
+		renderChatList();
+		var $next = $('.ctb-chat-visibility').filter(function() { return $(this).data('chatId') === id; }).first();
+		var focusTarget = ($next.length ? $next : $('#ctb-chats-close, #ctb-chats-more'))[0];
+		if (focusTarget) focusTarget.focus({ preventScroll: true });
+	});
+
+	$(document).on('click', '.ctb-chat-pill:not(#ctb-chats-more)', function() {
 		var $item = $(this);
 		var chat = $item.data('chat');
 

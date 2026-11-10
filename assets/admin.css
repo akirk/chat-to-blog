@@ -1323,3 +1323,130 @@
 .ctb-media-item .ctb-preview-btn:hover {
 	background: rgba(0, 0, 0, 0.8);
 }
+
+.ctb-chat-choice {
+	display: inline-flex;
+	align-items: stretch;
+	border: 1px solid #ddd;
+	border-radius: 20px;
+	background: #f0f0f0;
+}
+
+.ctb-chat-choice .ctb-chat-pill {
+	border: 0;
+	border-radius: 20px 0 0 20px;
+	padding-right: 8px;
+}
+
+.ctb-chat-visibility {
+	border: 0;
+	border-left: 1px solid #ddd;
+	border-radius: 0 20px 20px 0;
+	background: transparent;
+	color: #50575e;
+	padding: 4px 10px;
+	cursor: pointer;
+	font-size: 16px;
+}
+
+.ctb-chat-visibility:hover {
+	background: #ddd;
+	color: #1d2327;
+}
+
+.ctb-chat-hidden {
+	opacity: 0.45;
+}
+
+.ctb-chat-items {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.ctb-chats-expanded {
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	gap: 20px;
+}
+
+.ctb-chats-expanded .ctb-chat-items {
+	flex: 1;
+}
+
+.ctb-chat-filters {
+	flex: 0 0 160px;
+	min-width: 0;
+	margin: 0;
+	padding: 0 16px 0 0;
+	border: 0;
+	border-right: 1px solid #ddd;
+}
+
+.ctb-chat-filters legend {
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+
+.ctb-chat-filters label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 8px;
+	overflow-wrap: anywhere;
+}
+
+.ctb-chat-filters input {
+	flex-shrink: 0;
+	margin: 0;
+}
+
+@media (max-width: 600px) {
+	.ctb-chats-expanded {
+		flex-wrap: wrap;
+	}
+
+	.ctb-chat-filters {
+		flex-basis: 100%;
+		border-right: 0;
+		padding-right: 0;
+	}
+}
+
+.ctb-chat-choice-collapsed .ctb-chat-pill {
+	border-radius: 20px;
+	padding-right: 14px;
+}
+
+.ctb-chats-expanded {
+	position: relative;
+	padding-right: 32px;
+}
+
+.ctb-chats-close {
+	position: absolute;
+	top: 0;
+	right: 0;
+	border: 0;
+	background: transparent;
+	color: #50575e;
+	font-size: 24px;
+	line-height: 1;
+	padding: 2px 6px;
+	cursor: pointer;
+}
+
+.ctb-chats-close:hover {
+	color: #1d2327;
+	background: #f0f0f0;
+}
+
+.ctb-chat-filters .ctb-chat-count-label {
+	margin-top: 16px;
+}
+
+#ctb-collapsed-chat-count {
+	width: 80px;
+}
