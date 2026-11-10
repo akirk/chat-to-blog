@@ -641,9 +641,9 @@
 			$chats.append($('<span class="ctb-empty">').text(__('No chats match your preferences.', 'chat-to-blog')));
 		}
 		if (!chatsExpanded) {
-			$chats.append($('<button type="button" id="ctb-chats-more" class="button">')
-				.attr({ 'aria-expanded': String(chatsExpanded), 'aria-controls': 'ctb-chat-list' })
-				.text(__('More', 'chat-to-blog')));
+			$chats.append($('<button type="button" id="ctb-chats-more" class="ctb-chat-pill no-avatar">')
+				.attr({ 'aria-expanded': String(chatsExpanded), 'aria-controls': 'ctb-chat-list', 'aria-label': __('More chats', 'chat-to-blog'), title: __('More chats', 'chat-to-blog') })
+				.text('...'));
 		}
 	}
 
@@ -684,7 +684,7 @@
 		if (focusTarget) focusTarget.focus({ preventScroll: true });
 	});
 
-	$(document).on('click', '.ctb-chat-pill', function() {
+	$(document).on('click', '.ctb-chat-pill:not(#ctb-chats-more)', function() {
 		var $item = $(this);
 		var chat = $item.data('chat');
 
