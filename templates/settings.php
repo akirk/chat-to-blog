@@ -47,7 +47,7 @@ $token = $beeper->get_token();
 					echo wp_kses(
 						sprintf(
 							/* translators: %s: link to Beeper download page */
-							__( '%s on the same computer where you use this WordPress admin page.', 'chat-to-blog' ),
+							__( '%s on this computer.', 'chat-to-blog' ),
 							'<a href="https://www.beeper.com/download" target="_blank" rel="noopener">' . esc_html__( 'Install Beeper Desktop', 'chat-to-blog' ) . '</a>'
 						),
 						[ 'a' => [ 'href' => [], 'target' => [], 'rel' => [] ] ]
