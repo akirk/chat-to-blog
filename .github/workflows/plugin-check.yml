@@ -2,8 +2,8 @@ name: Plugin Check
 
 on:
   push:
-    branches:
-      - main
+    branches-ignore:
+      - 'dist/**'
   pull_request:
     types:
       - opened
