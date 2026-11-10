@@ -58,7 +58,7 @@ $token = $beeper->get_token();
 				<li><?php echo wp_kses( __( 'Keep <strong>Beeper Desktop</strong> running while you browse chat media in WordPress.', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
 			</ol>
 
-			<h3><?php esc_html_e( 'Configure Beeper for Chat to Blog', 'chat-to-blog' ); ?></h3>
+			<h3><?php esc_html_e( 'Enable the local Beeper API', 'chat-to-blog' ); ?></h3>
 			<ol>
 				<li><?php echo wp_kses( __( 'Open Beeper Desktop and go to <strong>Settings</strong> (gear icon).', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
 				<li><?php echo wp_kses( __( 'Click <strong>Developers</strong> in the sidebar', 'chat-to-blog' ), [ 'strong' => [] ] ); ?></li>
