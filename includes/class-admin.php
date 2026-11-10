@@ -25,6 +25,7 @@ class Admin {
 		add_action( 'wp_ajax_ctb_test_connection', [ $this, 'ajax_test_connection' ] );
 		add_action( 'wp_ajax_ctb_save_token', [ $this, 'ajax_save_token' ] );
 		add_action( 'wp_ajax_ctb_save_post_types', [ $this, 'ajax_save_post_types' ] );
+		add_action( 'wp_ajax_ctb_save_user_settings', [ $this, 'ajax_save_user_settings' ] );
 		add_action( 'wp_ajax_ctb_get_chats', [ $this, 'ajax_get_chats' ] );
 		add_action( 'wp_ajax_ctb_get_media', [ $this, 'ajax_get_media' ] );
 		add_action( 'wp_ajax_ctb_import_media', [ $this, 'ajax_import_media' ] );
@@ -98,6 +99,7 @@ class Admin {
 		wp_localize_script( 'chat-to-blog-beeper-client', 'BeeperClientConfig', $beeper_config );
 
 		wp_localize_script( 'chat-to-blog-admin', 'ctbConfig', [
+			'userSettings'     => (object) ( get_user_meta( get_current_user_id(), 'chat_to_blog_user_settings', true ) ?: [] ),
 			'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
 			'nonce'            => wp_create_nonce( 'chat_to_blog' ),
 			'beeperToken'      => $this->beeper->get_token(),
@@ -291,6 +293,38 @@ class Admin {
 			'post_types' => $post_types,
 			'media_url'  => $this->get_media_browser_url( $post_types[0] ?? '' ),
 		] );
+	}
+
+	public function ajax_save_user_settings() {
+		check_ajax_referer( 'chat_to_blog', 'nonce' );
+
+		if ( ! current_user_can( 'upload_files' ) ) {
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
+		}
+
+		$input = isset( $_POST['settings'] ) && is_string( $_POST['settings'] ) ? json_decode( wp_unslash( $_POST['settings'] ), true ) : null;
+		if ( ! is_array( $input ) ) {
+			wp_send_json_error( __( 'Invalid settings', 'chat-to-blog' ) );
+		}
+		$settings = get_user_meta( get_current_user_id(), 'chat_to_blog_user_settings', true );
+		$settings = is_array( $settings ) ? $settings : [];
+		if ( isset( $input['postFormat'] ) && in_array( $input['postFormat'], [ 'gallery', 'blocks' ], true ) ) {
+			$settings['postFormat'] = $input['postFormat'];
+		}
+		if ( isset( $input['collapsedChatCount'] ) && is_int( $input['collapsedChatCount'] ) && $input['collapsedChatCount'] >= 1 && $input['collapsedChatCount'] <= 200 ) {
+			$settings['collapsedChatCount'] = $input['collapsedChatCount'];
+		}
+		if ( isset( $input['excludedNetworks'] ) && is_array( $input['excludedNetworks'] ) ) {
+			$settings['excludedNetworks'] = array_values( array_unique( array_map( 'sanitize_text_field', array_filter( $input['excludedNetworks'], 'is_string' ) ) ) );
+		}
+		if ( isset( $input['hiddenChats'] ) && is_array( $input['hiddenChats'] ) ) {
+			$settings['hiddenChats'] = array_values( array_unique( array_map( 'sanitize_text_field', array_filter( $input['hiddenChats'], 'is_string' ) ) ) );
+		}
+		$saved = update_user_meta( get_current_user_id(), 'chat_to_blog_user_settings', $settings );
+		if ( false === $saved && get_user_meta( get_current_user_id(), 'chat_to_blog_user_settings', true ) !== $settings ) {
+			wp_send_json_error( __( 'Could not save preferences', 'chat-to-blog' ) );
+		}
+		wp_send_json_success( $settings );
 	}
 
 	public function ajax_get_chats() {
