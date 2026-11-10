@@ -62,6 +62,8 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 						</div>
 						<div id="ctb-timeline-bars" class="ctb-timeline-bars"></div>
 					</div>
+					<div id="ctb-media-open-status" role="status"></div>
+					<div id="ctb-media-failure-note" class="ctb-media-failure-note" role="status" style="display:none;"></div>
 					<div id="ctb-media-grid" class="ctb-media-grid">
 						<p class="ctb-hint"><?php esc_html_e( 'Select a chat above to browse media', 'chat-to-blog' ); ?></p>
 					</div>
