@@ -7,9 +7,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-$user_id = get_current_user_id();
-$beeper = new \ChatToBlog\BeeperAPI( $user_id );
-$is_configured = $beeper->is_configured();
 $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' => false ] ) : [];
 ?>
 
@@ -22,16 +19,6 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 		</h1>
 	</div>
 
-	<?php if ( ! $is_configured ) : ?>
-		<div class="ctb-setup-needed">
-			<div class="ctb-setup-icon">🔗</div>
-			<h2><?php esc_html_e( 'Connect Beeper Desktop', 'chat-to-blog' ); ?></h2>
-			<p><?php esc_html_e( 'Chat to Blog uses Beeper Desktop as a private bridge to your chat apps. Once Beeper is connected to Signal, WhatsApp, or another network, this plugin can browse the photos and videos from those chats and save selected media to WordPress.', 'chat-to-blog' ); ?></p>
-			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="button button-primary button-hero">
-				<?php esc_html_e( 'Set Up Beeper Desktop', 'chat-to-blog' ); ?>
-			</a>
-		</div>
-	<?php endif; ?>
 		<div id="ctb-connection-error" class="ctb-setup-needed" style="display:none;">
 			<div class="ctb-setup-icon">🔌</div>
 			<h2><?php esc_html_e( 'Can’t reach Beeper Desktop', 'chat-to-blog' ); ?></h2>

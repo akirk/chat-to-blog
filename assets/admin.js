@@ -772,10 +772,10 @@
 			if (chatsExpanded) $wrapper.append($toggle);
 			$chats.append($wrapper);
 		});
-		if (!displayed.length) {
+		if (allChats.length && !displayed.length) {
 			$chats.append($('<span class="ctb-empty">').text(__('No chats match your preferences.', 'chat-to-blog')));
 		}
-		if (!chatsExpanded) {
+		if (!chatsExpanded && allChats.length) {
 			$chats.append($('<button type="button" id="ctb-chats-more" class="ctb-chat-pill no-avatar">')
 				.attr({ 'aria-expanded': String(chatsExpanded), 'aria-controls': 'ctb-chat-list', 'aria-label': __('More chats', 'chat-to-blog'), title: __('More chats', 'chat-to-blog') })
 				.text('...'));
