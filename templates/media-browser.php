@@ -7,6 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+$beeper = new \ChatToBlog\BeeperAPI( get_current_user_id() );
 $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' => false ] ) : [];
 ?>
 
@@ -18,6 +19,15 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Settings', 'chat-to-blog' ); ?></a>
 		</h1>
 	</div>
+
+	<?php if ( ! $beeper->is_configured() ) : ?>
+		<div class="notice notice-info inline">
+			<p>
+				<?php esc_html_e( 'Connect Beeper Desktop to browse photos and videos from your chats and turn them into blog posts. You can also post images already in your library using Unattached Media.', 'chat-to-blog' ); ?>
+				<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>"><?php esc_html_e( 'Connect Beeper Desktop', 'chat-to-blog' ); ?></a>
+			</p>
+		</div>
+	<?php endif; ?>
 
 		<div id="ctb-connection-error" class="ctb-setup-needed" style="display:none;">
 			<div class="ctb-setup-icon">🔌</div>
