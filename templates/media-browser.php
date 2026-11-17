@@ -20,15 +20,6 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 		</h1>
 	</div>
 
-	<?php if ( ! $beeper->is_configured() ) : ?>
-		<div class="notice notice-info inline">
-			<p>
-				<?php esc_html_e( 'Connect Beeper Desktop to browse photos and videos from your chats and turn them into blog posts. You can also post images already in your library using Unattached Media.', 'chat-to-blog' ); ?>
-				<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>"><?php esc_html_e( 'Connect Beeper Desktop', 'chat-to-blog' ); ?></a>
-			</p>
-		</div>
-	<?php endif; ?>
-
 		<div id="ctb-connection-error" class="ctb-setup-needed" style="display:none;">
 			<div class="ctb-setup-icon">🔌</div>
 			<h2><?php esc_html_e( 'Can’t reach Beeper Desktop', 'chat-to-blog' ); ?></h2>
@@ -43,7 +34,14 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 			<div class="ctb-chat-bar">
 				<div class="ctb-chat-bar-inner">
 					<div id="ctb-chat-list" class="ctb-chat-list-horizontal">
+						<?php if ( ! $beeper->is_configured() ) : ?>
+							<span id="ctb-beeper-invitation" class="description">
+								<?php esc_html_e( 'Connect Beeper Desktop to browse photos and videos from your chats and turn them into blog posts.', 'chat-to-blog' ); ?>
+								<a href="<?php echo esc_url( admin_url( 'options-general.php?page=chat-to-blog-settings' ) ); ?>"><?php esc_html_e( 'Connect Beeper Desktop', 'chat-to-blog' ); ?></a>
+							</span>
+						<?php else : ?>
 						<span class="spinner is-active"></span> <?php esc_html_e( 'Loading chats...', 'chat-to-blog' ); ?>
+						<?php endif; ?>
 					</div>
 				</div>
 			</div>

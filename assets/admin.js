@@ -711,6 +711,7 @@
 			'aria-expanded': String(chatsExpanded),
 			title: chatsExpanded ? __('Collapse chats', 'chat-to-blog') : __('Expand chats', 'chat-to-blog')
 		});
+		var $invitation = $('#ctb-beeper-invitation').detach();
 		var $list = $('#ctb-chat-list').empty().toggleClass('ctb-chats-expanded', chatsExpanded);
 		var $chats = $('<div class="ctb-chat-items">');
 
@@ -743,6 +744,7 @@
 			.attr({ 'aria-pressed': String(mediaSource === 'library'), title: __('Browse unattached images', 'chat-to-blog') })
 			.append($('<span class="ctb-chat-title">').text(__('Unattached Media', 'chat-to-blog')));
 		$chats.append($('<span class="ctb-chat-choice">').toggleClass('ctb-chat-choice-collapsed', !chatsExpanded).append($library));
+		$chats.append($invitation);
 		$list.append($chats);
 
 		var matching = allChats.filter(function(chat) {
