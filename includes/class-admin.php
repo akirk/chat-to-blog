@@ -29,6 +29,7 @@ class Admin {
 		add_action( 'wp_ajax_ctb_save_post_types', [ $this, 'ajax_save_post_types' ] );
 		add_action( 'wp_ajax_ctb_save_user_settings', [ $this, 'ajax_save_user_settings' ] );
 		add_action( 'wp_ajax_ctb_get_chats', [ $this, 'ajax_get_chats' ] );
+		add_action( 'wp_ajax_ctb_get_library', [ $this, 'ajax_get_library' ] );
 		add_action( 'wp_ajax_ctb_get_media', [ $this, 'ajax_get_media' ] );
 		add_action( 'wp_ajax_ctb_import_media', [ $this, 'ajax_import_media' ] );
 		add_action( 'wp_ajax_ctb_create_post', [ $this, 'ajax_create_post' ] );
@@ -90,7 +91,7 @@ class Admin {
 			'chat-to-blog-admin',
 			CHAT_TO_BLOG_URL . 'assets/admin.css',
 			[],
-			CHAT_TO_BLOG_VERSION
+			CHAT_TO_BLOG_VERSION . '.' . filemtime( CHAT_TO_BLOG_PATH . 'assets/admin.css' )
 		);
 
 		wp_enqueue_script(
@@ -113,7 +114,7 @@ class Admin {
 			'chat-to-blog-admin',
 			CHAT_TO_BLOG_URL . 'assets/admin.js',
 			[ 'jquery', 'sortablejs', 'chat-to-blog-beeper-client', 'wp-i18n' ],
-			CHAT_TO_BLOG_VERSION,
+			CHAT_TO_BLOG_VERSION . '.' . filemtime( CHAT_TO_BLOG_PATH . 'assets/admin.js' ),
 			true
 		);
 
@@ -465,6 +466,76 @@ class Admin {
 		] );
 	}
 
+	public function ajax_get_library() {
+		check_ajax_referer( 'chat_to_blog', 'nonce' );
+		if ( ! current_user_can( 'upload_files' ) ) {
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
+		}
+
+		$page = max( 1, absint( $_POST['page'] ?? 1 ) );
+		$args = [
+			'post_type' => 'attachment',
+			'post_status' => 'inherit',
+			'post_mime_type' => 'image',
+			'post_parent' => 0,
+			'posts_per_page' => -1,
+			'no_found_rows' => true,
+			'orderby' => [ 'date' => 'DESC', 'ID' => 'DESC' ],
+		];
+		if ( ! current_user_can( 'edit_others_posts' ) ) {
+			$args['author'] = get_current_user_id();
+		}
+		$query = new \WP_Query( $args );
+		$counts = [];
+		$matching = [];
+		$month = isset( $_POST['month'] ) ? sanitize_text_field( wp_unslash( $_POST['month'] ) ) : '';
+		foreach ( $query->posts as $attachment ) {
+			if ( ! current_user_can( 'edit_post', $attachment->ID ) ) {
+				continue;
+			}
+			$metadata = wp_get_attachment_metadata( $attachment->ID );
+			$captured = (int) ( $metadata['image_meta']['created_timestamp'] ?? 0 );
+			$date = get_post_datetime( $attachment );
+			$timestamp = $captured > 0 ? $captured : ( $date ? $date->getTimestamp() : 0 );
+			if ( ! $timestamp ) {
+				continue;
+			}
+			$key = wp_date( 'Y-m', $timestamp );
+			$counts[ $key ] = ( $counts[ $key ] ?? 0 ) + 1;
+			if ( ! $month || $month === $key ) {
+				$matching[] = [ 'attachment' => $attachment, 'timestamp' => $timestamp ];
+			}
+		}
+		usort( $matching, static function ( $a, $b ) {
+			return ( $b['timestamp'] <=> $a['timestamp'] ) ?: ( $b['attachment']->ID <=> $a['attachment']->ID );
+		} );
+		$has_more = count( $matching ) > $page * 50;
+		$items = [];
+		foreach ( array_slice( $matching, ( $page - 1 ) * 50, 50 ) as $entry ) {
+			$attachment = $entry['attachment'];
+			if ( ! current_user_can( 'edit_post', $attachment->ID ) ) {
+				continue;
+			}
+			$url = wp_get_attachment_url( $attachment->ID );
+			if ( ! $url ) {
+				continue;
+			}
+			$items[] = [
+				'id' => 'library-' . $attachment->ID,
+				'attachmentId' => $attachment->ID,
+				'mxcUrl' => 'library://' . $attachment->ID,
+				'url' => $url,
+				'thumbnailUrl' => wp_get_attachment_image_url( $attachment->ID, 'medium' ) ?: $url,
+				'mimeType' => $attachment->post_mime_type,
+				'type' => 'img',
+				'text' => $attachment->post_excerpt,
+				'sender' => get_the_author_meta( 'display_name', $attachment->post_author ),
+				'timestamp' => gmdate( 'c', $entry['timestamp'] ),
+			];
+		}
+		wp_send_json_success( [ 'items' => $items, 'hasMore' => $has_more, 'counts' => (object) $counts ] );
+	}
+
 	public function ajax_import_media() {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 
@@ -648,7 +719,6 @@ class Admin {
 				$date = new \DateTime( $post_date );
 				$post_args['post_date'] = $date->format( 'Y-m-d H:i:s' );
 				$post_args['post_date_gmt'] = get_gmt_from_date( $post_args['post_date'] );
-				$post_args['post_status'] = 'publish';
 			}
 
 			$post_id = wp_insert_post( $post_args );
@@ -713,6 +783,20 @@ class Admin {
 
 		foreach ( $images as $index => $image ) {
 			if ( ! is_array( $image ) ) {
+				continue;
+			}
+
+			if ( ! empty( $image['attachmentId'] ) ) {
+				$attachment_id = absint( $image['attachmentId'] );
+				$attachment = get_post( $attachment_id );
+				if ( ! $attachment || $attachment->post_type !== 'attachment' || $attachment->post_status !== 'inherit' || $attachment->post_parent || ! wp_attachment_is_image( $attachment_id ) || ! current_user_can( 'edit_post', $attachment_id ) ) {
+					$import_errors[] = __( 'This image is no longer available as an unattached image.', 'chat-to-blog' );
+					continue;
+				}
+				$imported_images[] = [
+					'attachmentId' => $attachment_id,
+					'attachmentUrl' => wp_get_attachment_url( $attachment_id ),
+				];
 				continue;
 			}
 

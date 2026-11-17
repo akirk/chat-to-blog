@@ -13,6 +13,10 @@ Import photos and videos from your Beeper chats and turn them into WordPress pos
 
 ## Description
 
+You can also use Chat to Blog without Beeper: choose **Unattached Media** to browse images already in your WordPress Media Library, select and reorder them, and quickly create a gallery or individual image post. The month distribution graph and backdating use capture dates when available, falling back to library dates. Existing attachments are reused without copying the files and assigned to the resulting post.
+
+“Unattached” follows WordPress’s definition: an image has no parent post. An image can still appear in existing post content without having a parent, so this list does not guarantee that an image is unused.
+
 Chat to Blog helps you save photos and videos that arrive in Signal, WhatsApp, and other group chats before they disappear into chat history. It connects to the Beeper Desktop local API, lets you browse chat media, and publishes selected items directly as WordPress posts with gallery or individual image/video blocks.
 
 Beeper Desktop acts as the local bridge. It connects to your chat apps as a desktop device, decrypts your chat media on your computer, and exposes a private API that this plugin can read after you approve it.
@@ -23,6 +27,8 @@ Because Beeper Desktop's API only listens on localhost, the browser talks to it 
 
 ### Features
 
+- Browse unattached library images and create posts without Beeper
+- Explore a month distribution graph for chats and unattached images
 - Browse chats and group conversations connected through Beeper Desktop
 - View and select images and videos from chat messages
 - Support for multiple image formats: JPEG, PNG, GIF, WebP, HEIC/HEIF, AVIF, BMP, TIFF, SVG
@@ -40,6 +46,8 @@ Because Beeper Desktop's API only listens on localhost, the browser talks to it 
 
 ### Requirements
 
+Posting existing library images needs no Beeper connection. For importing chat media, you also need:
+
 - [Beeper Desktop](https://www.beeper.com/download) running on the same machine where you use the WordPress admin
 - Signal, WhatsApp, or another chat network connected inside Beeper Desktop
 - Beeper API token (generated from Beeper Desktop settings)
@@ -48,7 +56,8 @@ Because Beeper Desktop's API only listens on localhost, the browser talks to it 
 
 1. Upload the `chat-to-blog` folder to `/wp-content/plugins/`
 2. Activate the plugin through the WordPress admin
-3. Go to **Settings > Chat to Blog** to configure your Beeper connection
+3. Go to **Posts > Chat to Blog** and select **Unattached Media** to post existing library images
+4. To browse chat media, go to **Settings > Chat to Blog** and configure your Beeper connection
 
 ### Beeper API Token
 
@@ -65,7 +74,11 @@ Because Beeper Desktop's API only listens on localhost, the browser talks to it 
 
 ### How do I create a post?
 
-Go to **Posts > Chat to Blog** in the WordPress admin, select a chat from the horizontal chat list at the top, click images to select them (they appear in the right panel), drag to reorder them if needed, enter a post title and optional text, choose between the Gallery and Individual images format, and click **Save Draft** or **Publish**.
+Go to **Posts > Chat to Blog** in the WordPress admin, select a chat or **Unattached Media** from the horizontal list at the top, click images to select them (they appear in the right panel), drag to reorder them if needed, enter a post title and optional text, choose between the Gallery and Individual images format, and click **Save Draft** or **Publish**.
+
+### Can I use this without Beeper?
+
+Yes. Choose **Unattached Media** to select images already in your Media Library and use the same ordering, month browsing, backdating, and posting controls. Beeper is only needed to browse and import media from chats.
 
 ### Does my WordPress site need to reach Beeper?
 
@@ -85,7 +98,7 @@ Videos are marked with a play icon and a "VIDEO" badge in the browser. They are 
 
 ### How do I load older media?
 
-Scroll to the end of a chat's media to fetch older messages, or use the timeline above the grid to jump straight to a month.
+Use the timeline above the grid to jump to a month in a chat or in Unattached Media. Use Load more at the end of the grid to browse older items.
 
 ### Can I import media without creating a post?
 
