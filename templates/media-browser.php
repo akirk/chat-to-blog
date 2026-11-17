@@ -31,7 +31,7 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 				<?php esc_html_e( 'Set Up Beeper Desktop', 'chat-to-blog' ); ?>
 			</a>
 		</div>
-	<?php else : ?>
+	<?php endif; ?>
 		<div id="ctb-connection-error" class="ctb-setup-needed" style="display:none;">
 			<div class="ctb-setup-icon">🔌</div>
 			<h2><?php esc_html_e( 'Can’t reach Beeper Desktop', 'chat-to-blog' ); ?></h2>
@@ -150,5 +150,4 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 			</div>
 		</div>
 		</div>
-	<?php endif; ?>
 </div>

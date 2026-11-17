@@ -10,6 +10,8 @@
 	var beeper = new BeeperClient(config.beeperToken);
 	var selectedMedia = [];
 	var currentChatId = null;
+	var mediaSource = 'chats';
+	var libraryPage = 1;
 	var currentCursor = null;
 	var imageCache = {};
 	var importedUrls = new Set(config.importedUrls || []);
@@ -562,7 +564,11 @@
 
 	$(document).ready(function() {
 		if ($('#ctb-chat-list').length) {
-			loadChatList();
+			if (config.beeperToken) loadChatList();
+			else {
+				renderChatList();
+				$('#ctb-library-chat').trigger('click');
+			}
 			restoreFormatPreference();
 		}
 		var grid = document.getElementById('ctb-media-grid');
@@ -610,7 +616,7 @@
 	function loadChatList() {
 		$('#ctb-connection-error').hide();
 		$('#ctb-main-ui').show();
-		$('#ctb-chat-list').html('<span class="spinner is-active"></span> ' + __('Loading chats...', 'chat-to-blog'));
+		renderChatList();
 
 		beeper.getAllChats()
 			.then(function(result) {
@@ -625,14 +631,14 @@
 						renderChatList();
 					});
 				} else if (result.isConnectionError) {
-					$('#ctb-main-ui').hide();
-					$('#ctb-connection-error').show();
+
+					if (mediaSource === 'chats') $('#ctb-connection-error').show();
 				} else {
-					$('#ctb-chat-list').html('<span class="ctb-error">' + sprintf(
+					$('#ctb-chat-list').append($('<span class="ctb-error">').text(sprintf(
 						/* translators: %s: error message */
 						__('Failed to load chats: %s', 'chat-to-blog'),
 						result.error
-					) + '</span>');
+					)));
 				}
 			});
 	}
@@ -707,10 +713,6 @@
 		});
 		var $list = $('#ctb-chat-list').empty().toggleClass('ctb-chats-expanded', chatsExpanded);
 		var $chats = $('<div class="ctb-chat-items">');
-		if (!allChats.length) {
-			$list.append($('<span class="ctb-empty">').text(__('No chats found', 'chat-to-blog')));
-			return;
-		}
 
 		if (chatsExpanded) {
 			$list.append($('<button type="button" id="ctb-chats-close" class="ctb-chats-close">')
@@ -736,6 +738,11 @@
 				.val(userSettings.collapsedChatCount));
 			$list.append($filters);
 		}
+		var $library = $('<button type="button" id="ctb-library-chat" class="ctb-chat-pill no-avatar">')
+			.toggleClass('active', mediaSource === 'library')
+			.attr({ 'aria-pressed': String(mediaSource === 'library'), title: __('Browse unattached images', 'chat-to-blog') })
+			.append($('<span class="ctb-chat-title">').text(__('Unattached Media', 'chat-to-blog')));
+		$chats.append($('<span class="ctb-chat-choice">').toggleClass('ctb-chat-choice-collapsed', !chatsExpanded).append($library));
 		$list.append($chats);
 
 		var matching = allChats.filter(function(chat) {
@@ -818,13 +825,15 @@
 		if (focusTarget) focusTarget.focus({ preventScroll: true });
 	});
 
-	$(document).on('click', '.ctb-chat-pill:not(#ctb-chats-more)', function() {
+	$(document).on('click', '.ctb-chat-pill:not(#ctb-chats-more):not(#ctb-library-chat)', function() {
 		var $item = $(this);
 		var chat = $item.data('chat');
 
 		$('.ctb-chat-pill').removeClass('active');
 		$item.addClass('active');
 
+		mediaSource = 'chats';
+		$('#ctb-library-chat').attr('aria-pressed', 'false');
 		currentChatId = chat.id;
 		if (chatsExpanded) {
 			chatsExpanded = false;
@@ -844,8 +853,50 @@
 		e.preventDefault();
 		if ($(this).hasClass('ctb-load-more-tile-loading')) return;
 		$(this).addClass('ctb-load-more-tile-loading');
-		loadMedia(true);
+		if (mediaSource === 'library') loadLibrary(true);
+		else loadMedia(true);
 	});
+
+	$(document).on('click', '#ctb-library-chat', function() {
+		mediaSource = 'library';
+		currentChatId = null;
+		++loadMediaToken;
+		abortPendingViewFetches();
+		if (timelineScanController) timelineScanController.abort();
+		$('#ctb-load-more-wrap, .ctb-setup-needed').hide();
+		selectedMonth = null;
+		$('#ctb-timeline-reset').hide();
+		$('#ctb-timeline-bars').empty();
+		$('#ctb-timeline').show();
+		$('.ctb-timeline-status').text(__('Loading distribution…', 'chat-to-blog'));
+		chatsExpanded = false;
+		renderChatList();
+		$('#ctb-library-chat').trigger('focus');
+		loadLibrary(false);
+	});
+
+	async function loadLibrary(append) {
+		var token = ++loadMediaToken;
+		var $grid = $('#ctb-media-grid');
+		var page = append ? libraryPage + 1 : 1;
+		$('#ctb-media-open-status').empty();
+		if (!append) $grid.empty();
+		try {
+			var response = await wpAjax('ctb_get_library', { page: page, month: selectedMonth ? monthKey(selectedMonth.year, selectedMonth.month) : '' });
+			if (token !== loadMediaToken) return;
+			if (!response.success) throw new Error(response.data);
+			libraryPage = page;
+			renderTimeline({ counts: response.data.counts || {} });
+			$('.ctb-timeline-status').text(__('Unattached images by month', 'chat-to-blog'));
+			$grid.find('.ctb-load-more-tile').remove();
+			renderMedia(response.data.items, $grid);
+			if (response.data.hasMore) appendLoadMoreTile($grid);
+		} catch (err) {
+			if (token !== loadMediaToken) return;
+			$grid.find('.ctb-load-more-tile').removeClass('ctb-load-more-tile-loading');
+			showStatus('#ctb-media-open-status', __('Could not load unattached images. Please try again.', 'chat-to-blog'), true);
+		}
+	}
 
 	var timelineScan = null;
 	var monthNames = null;
@@ -1042,7 +1093,7 @@
 			const pct = mo.count > 0 ? Math.max(2, (mo.count / maxCount) * 100) : 0;
 			const tooltip = names[mo.month - 1] + ' ' + mo.year + ' · ' + sprintf(
 				/* translators: %d: number of messages in a given month */
-				_n('%d message', '%d messages', mo.count, 'chat-to-blog'),
+				(mediaSource === 'library' ? _n('%d image', '%d images', mo.count, 'chat-to-blog') : _n('%d message', '%d messages', mo.count, 'chat-to-blog')),
 				mo.count
 			);
 			const existingEl = existing[idx];
@@ -1088,7 +1139,7 @@
 	}
 
 	$(document).on('click', '.ctb-timeline-bar', function() {
-		if (!currentChatId) return;
+		if (!currentChatId && mediaSource !== 'library') return;
 		const year = parseInt($(this).attr('data-year'), 10);
 		const month = parseInt($(this).attr('data-month'), 10);
 
@@ -1098,11 +1149,12 @@
 		$(this).addClass('active');
 		$('#ctb-timeline-reset').show();
 
-		showMonth(year, month);
+		if (mediaSource === 'library') loadLibrary(false);
+		else showMonth(year, month);
 	});
 
 	$('#ctb-timeline-reset').on('click', function() {
-		if (!currentChatId) return;
+		if (!currentChatId && mediaSource !== 'library') return;
 		abortPendingViewFetches();
 		if (monthLoadController) {
 			try { monthLoadController.abort(); } catch (e) {}
@@ -1113,7 +1165,8 @@
 		selectedMonth = null;
 		$('.ctb-timeline-bar').removeClass('active');
 		$(this).hide();
-		loadMedia(false);
+		if (mediaSource === 'library') loadLibrary(false);
+		else loadMedia(false);
 	});
 
 	async function showMonth(year, month) {
@@ -1360,7 +1413,7 @@
 		var stats = { skippedFileUrls: 0, mediaRendered: 0 };
 
 		if (items.length === 0 && $container.children().length === 0) {
-			$container.html('<p class="ctb-empty">' + __('No media found in this chat', 'chat-to-blog') + '</p>');
+			$container.html('<p class="ctb-empty">' + (mediaSource === 'library' ? __('No unattached images found', 'chat-to-blog') : __('No media found in this chat', 'chat-to-blog')) + '</p>');
 			return stats;
 		}
 
@@ -1369,7 +1422,7 @@
 			if (!mxcUrl) {
 				return;
 			}
-			if (mxcUrl.indexOf('localmxc://') !== 0 && mxcUrl.indexOf('mxc://') !== 0 && mxcUrl.indexOf('file://') !== 0) {
+			if (!item.attachmentId && mxcUrl.indexOf('localmxc://') !== 0 && mxcUrl.indexOf('mxc://') !== 0 && mxcUrl.indexOf('file://') !== 0) {
 				stats.skippedFileUrls++;
 				return;
 			}
@@ -1396,7 +1449,8 @@
 				var $img = $('<img>').attr('alt', '');
 				$item.append($img);
 				var thumbnailUrl = isVideo && item.thumbnailUrl ? item.thumbnailUrl : mxcUrl;
-				loadImage($img, thumbnailUrl);
+				if (item.attachmentId) $img.attr('src', item.thumbnailUrl || item.url);
+				else loadImage($img, thumbnailUrl);
 			}
 
 			$item.append('<button type="button" class="ctb-preview-btn" title="' + __('Preview') + '">&#9974;</button>');
@@ -1534,7 +1588,8 @@
 				var $img = $('<img>');
 				$thumb.append($img);
 				var thumbnailUrl = isVideo && item.thumbnailUrl ? item.thumbnailUrl : item.mxcUrl;
-				loadImage($img, thumbnailUrl);
+				if (item.attachmentId) $img.attr('src', item.thumbnailUrl || item.url);
+				else loadImage($img, thumbnailUrl);
 			}
 
 			if (isVideo) {
@@ -1625,7 +1680,7 @@
 			)
 			: __('Import Without Posting', 'chat-to-blog');
 
-		$('#ctb-import-media').text(importLabel).prop('disabled', !hasImages);
+		$('#ctb-import-media').text(importLabel).prop('disabled', !hasImages || selectedMedia.every(function(item) { return !!item.attachmentId; }));
 		$('#ctb-save-draft, #ctb-publish').prop('disabled', !(hasTitle && hasImages));
 	}
 
@@ -1733,7 +1788,9 @@
 
 		var isVideo = item.type === 'video' || (item.mimeType && item.mimeType.indexOf('video/') === 0);
 
-		if (isVideo) {
+		if (item.attachmentId) {
+			$content.append($('<img>').attr({ src: item.url, alt: '' }));
+		} else if (isVideo) {
 			var $video = $('<video controls autoplay>');
 			$content.append($video);
 
@@ -1882,6 +1939,7 @@
 
 	function buildSelectedMediaPayload(item, dataUrl) {
 		return {
+			attachmentId: item.attachmentId || 0,
 			mxcUrl: getMediaUrl(item),
 			dataUrl: dataUrl || '',
 			mimeType: item.mimeType,
@@ -1901,7 +1959,7 @@
 				return Promise.reject(new Error(__('Selected media has no URL', 'chat-to-blog')));
 			}
 
-			if (importedUrls.has(mediaUrl)) {
+			if (item.attachmentId || importedUrls.has(mediaUrl)) {
 				return Promise.resolve(buildSelectedMediaPayload(item, ''));
 			}
 
@@ -2011,6 +2069,7 @@
 					}
 
 					markMediaImported(response.data.images);
+					if (mediaSource === 'library') loadLibrary(false);
 
 					var editPanels = $('.ctb-column-right').data('editPanels') || [];
 					editPanels.unshift({
