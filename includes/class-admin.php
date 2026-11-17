@@ -91,7 +91,7 @@ class Admin {
 			'chat-to-blog-admin',
 			CHAT_TO_BLOG_URL . 'assets/admin.css',
 			[],
-			CHAT_TO_BLOG_VERSION
+			CHAT_TO_BLOG_VERSION . '.' . filemtime( CHAT_TO_BLOG_PATH . 'assets/admin.css' )
 		);
 
 		wp_enqueue_script(

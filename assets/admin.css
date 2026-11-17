@@ -2,21 +2,35 @@
 
 /* Onboarding */
 .ctb-welcome {
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-	color: #fff;
-	padding: 25px 30px;
-	border-radius: 8px;
+	background: #fff;
+	border: 1px solid #ccd0d4;
+	border-left: 4px solid #2271b1;
+	padding: 20px;
+	border-radius: 4px;
 	margin: 20px 0;
 }
 
 .ctb-welcome h2 {
-	margin: 0 0 10px 0;
-	color: #fff;
+	margin: 0 0 12px;
 }
 
 .ctb-welcome p {
-	margin: 0 0 20px 0;
-	opacity: 0.9;
+	max-width: 80ch;
+	margin: 0 0 12px;
+	line-height: 1.6;
+}
+
+.ctb-welcome-options {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+	gap: 16px 32px;
+	border-top: 1px solid #dcdcde;
+	margin-top: 16px;
+	padding-top: 16px;
+}
+
+.ctb-welcome-options h3 {
+	margin: 0 0 8px;
 }
 
 .ctb-steps {

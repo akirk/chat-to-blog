@@ -21,9 +21,19 @@ $token = $beeper->get_token();
 
 	<?php if ( ! $is_configured ) : ?>
 	<div class="ctb-welcome">
-		<h2><?php esc_html_e( 'Save chat memories in WordPress', 'chat-to-blog' ); ?></h2>
-		<p><?php esc_html_e( 'Photos and videos often arrive in Signal, WhatsApp, and other group chats. Chat to Blog helps you pick those moments and turn them into WordPress posts, with the media saved to your own Media Library.', 'chat-to-blog' ); ?></p>
-		<p><?php esc_html_e( 'To access those chats privately, this plugin uses Beeper Desktop as a local bridge. Beeper connects to your chat apps on this computer, and Chat to Blog reads from Beeper only after you approve the local API connection.', 'chat-to-blog' ); ?></p>
+		<h2><?php esc_html_e( 'Save your memories in WordPress', 'chat-to-blog' ); ?></h2>
+		<p><?php esc_html_e( 'Turn photos and videos from your chats, or images already in your Media Library, into WordPress posts. Select your media, arrange it, and choose a date to save a draft or publish.', 'chat-to-blog' ); ?></p>
+		<div class="ctb-welcome-options">
+			<div>
+				<h3><?php esc_html_e( 'Browse your chats with Beeper', 'chat-to-blog' ); ?></h3>
+				<p><?php esc_html_e( 'Connect Beeper Desktop to pick photos and videos from Signal, WhatsApp, and other chats. Beeper acts as a local bridge on your computer, and Chat to Blog reads from it after you approve the connection. Follow the setup below to get started.', 'chat-to-blog' ); ?></p>
+			</div>
+			<div>
+				<h3><?php esc_html_e( 'Start with your Media Library', 'chat-to-blog' ); ?></h3>
+				<p><?php esc_html_e( 'Choose Unattached Media to browse images with no parent post. Use the month graph, reorder your selection, and backdate your post using capture dates where available. No Beeper connection is needed.', 'chat-to-blog' ); ?></p>
+				<a href="<?php echo esc_url( $create_post_url ); ?>" class="button"><?php esc_html_e( 'Browse Unattached Media', 'chat-to-blog' ); ?></a>
+			</div>
+		</div>
 	</div>
 	<?php endif; ?>
 
