@@ -29,9 +29,11 @@ class Admin {
 		add_action( 'wp_ajax_ctb_save_post_types', [ $this, 'ajax_save_post_types' ] );
 		add_action( 'wp_ajax_ctb_save_user_settings', [ $this, 'ajax_save_user_settings' ] );
 		add_action( 'wp_ajax_ctb_get_chats', [ $this, 'ajax_get_chats' ] );
+		add_action( 'wp_ajax_ctb_verify_media', [ $this, 'ajax_verify_media' ] );
 		add_action( 'wp_ajax_ctb_get_library', [ $this, 'ajax_get_library' ] );
 		add_action( 'wp_ajax_ctb_get_media', [ $this, 'ajax_get_media' ] );
 		add_action( 'wp_ajax_ctb_import_media', [ $this, 'ajax_import_media' ] );
+		add_action( 'wp_ajax_ctb_get_adjacent_posts', [ $this, 'ajax_get_adjacent_posts' ] );
 		add_action( 'wp_ajax_ctb_create_post', [ $this, 'ajax_create_post' ] );
 	}
 
@@ -466,6 +468,25 @@ class Admin {
 		] );
 	}
 
+	public function ajax_verify_media() {
+		check_ajax_referer( 'chat_to_blog', 'nonce' );
+		$id = absint( $_POST['attachment_id'] ?? 0 );
+		$attachment = get_post( $id );
+		if ( ! current_user_can( 'upload_files' ) || ! $attachment || 'attachment' !== $attachment->post_type || ! wp_attachment_is_image( $id ) || ! current_user_can( 'edit_post', $id ) ) {
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
+		}
+		$verified = '1' === ( $_POST['verified'] ?? '' );
+		if ( $verified ) {
+			update_post_meta( $id, '_chat_to_blog_verified', 1 );
+		} else {
+			delete_post_meta( $id, '_chat_to_blog_verified' );
+		}
+		if ( (bool) get_post_meta( $id, '_chat_to_blog_verified', true ) !== $verified ) {
+			wp_send_json_error( __( 'Could not save verification.', 'chat-to-blog' ) );
+		}
+		wp_send_json_success( [ 'verified' => $verified ] );
+	}
+
 	public function ajax_get_library() {
 		check_ajax_referer( 'chat_to_blog', 'nonce' );
 		if ( ! current_user_can( 'upload_files' ) ) {
@@ -482,6 +503,9 @@ class Admin {
 			'no_found_rows' => true,
 			'orderby' => [ 'date' => 'DESC', 'ID' => 'DESC' ],
 		];
+		if ( empty( $_POST['show_verified'] ) ) {
+			$args['meta_query'] = [ [ 'key' => '_chat_to_blog_verified', 'compare' => 'NOT EXISTS' ] ];
+		}
 		if ( ! current_user_can( 'edit_others_posts' ) ) {
 			$args['author'] = get_current_user_id();
 		}
@@ -522,6 +546,7 @@ class Admin {
 			}
 			$items[] = [
 				'id' => 'library-' . $attachment->ID,
+				'verified' => (bool) get_post_meta( $attachment->ID, '_chat_to_blog_verified', true ),
 				'attachmentId' => $attachment->ID,
 				'mxcUrl' => 'library://' . $attachment->ID,
 				'url' => $url,
@@ -569,6 +594,60 @@ class Admin {
 			'images'   => $imported_images,
 			'errors'   => $import_errors,
 		] );
+	}
+
+	public function ajax_get_adjacent_posts() {
+		check_ajax_referer( 'chat_to_blog', 'nonce' );
+
+		$post_type = isset( $_POST['post_type'] ) ? sanitize_key( wp_unslash( $_POST['post_type'] ) ) : $this->get_current_post_type();
+		$type = get_post_type_object( $post_type );
+		if ( ! current_user_can( 'upload_files' ) || ! $type || ! in_array( $post_type, $this->get_enabled_post_types(), true ) || ! current_user_can( $type->cap->edit_posts ) ) {
+			wp_send_json_error( __( 'Permission denied', 'chat-to-blog' ) );
+		}
+
+		$value = isset( $_POST['post_date'] ) ? sanitize_text_field( wp_unslash( $_POST['post_date'] ) ) : '';
+		$date = \DateTimeImmutable::createFromFormat( '!Y-m-d\TH:i', $value, wp_timezone() );
+		if ( ! $date || $date->format( 'Y-m-d\TH:i' ) !== $value ) {
+			wp_send_json_error( __( 'Invalid date', 'chat-to-blog' ) );
+		}
+
+		$result = [];
+		foreach ( [ 'before' => 'DESC', 'after' => 'ASC' ] as $direction => $order ) {
+			$result[ $direction ] = null;
+			// Page through candidates so an unreadable post cannot hide a readable neighbor.
+			$page = 1;
+			do {
+				$query = new \WP_Query( [
+					'post_type' => $post_type,
+					'post_status' => [ 'publish', 'future', 'draft', 'pending', 'private' ],
+					'posts_per_page' => 10,
+					'paged' => $page++,
+					'no_found_rows' => true,
+					'orderby' => [ 'date' => $order, 'ID' => $order ],
+					'date_query' => [ [
+						'column' => 'post_date',
+						$direction => $date->format( 'Y-m-d H:i:s' ),
+						'inclusive' => true,
+					] ],
+				] );
+				foreach ( $query->posts as $post ) {
+					if ( ! current_user_can( 'read_post', $post->ID ) || ( 'publish' !== $post->post_status && ! current_user_can( 'edit_post', $post->ID ) ) ) {
+						continue;
+					}
+					$result[ $direction ] = [
+						'title' => $post->post_title ?: __( '(no title)', 'chat-to-blog' ),
+						'date' => get_the_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $post ),
+						'status' => get_post_status_object( $post->post_status )->label,
+						'url' => 'publish' === $post->post_status ? get_permalink( $post ) : get_preview_post_link( $post ),
+						'content' => $post->post_password && ! current_user_can( 'edit_post', $post->ID )
+							? esc_html__( 'Password-protected post.', 'chat-to-blog' )
+							: wp_kses_post( wpautop( strip_shortcodes( $post->post_content ) ) ),
+					];
+					break;
+				}
+			} while ( ! $result[ $direction ] && count( $query->posts ) === 10 );
+		}
+		wp_send_json_success( $result );
 	}
 
 	public function ajax_create_post() {
