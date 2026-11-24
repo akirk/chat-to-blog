@@ -57,6 +57,7 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 						</div>
 						<div id="ctb-timeline-bars" class="ctb-timeline-bars"></div>
 					</div>
+					<label id="ctb-verified-filter" hidden><input type="checkbox" id="ctb-show-verified" /> <?php esc_html_e( 'Show verified images', 'chat-to-blog' ); ?></label>
 					<div id="ctb-media-open-status" role="status"></div>
 					<div id="ctb-media-failure-note" class="ctb-media-failure-note" role="status" style="display:none;"></div>
 					<div id="ctb-media-grid" class="ctb-media-grid">
@@ -89,6 +90,8 @@ $categories = $post_type_supports_categories ? get_categories( [ 'hide_empty' =>
 							<button type="button" id="ctb-import-media" class="button" disabled><?php esc_html_e( 'Import Without Posting', 'chat-to-blog' ); ?></button>
 							<div id="ctb-media-import-status"></div>
 						</div>
+
+						<div id="ctb-adjacent-posts" class="ctb-adjacent-posts" aria-live="polite" hidden></div>
 
 						<div class="ctb-form-group">
 							<label for="ctb-post-title"><?php esc_html_e( 'Title', 'chat-to-blog' ); ?></label>
